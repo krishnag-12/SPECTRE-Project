@@ -17,12 +17,23 @@
 // =============================================================================
 // PIN & RADIO HARDWARE DEFINITIONS 
 // =============================================================================
-#define LORA_FREQUENCY   433.0
-#define LORA_BANDWIDTH   125.0
-#define LORA_SF          10
-#define LORA_CR          6
-#define LORA_SYNC_WORD   0x34
-#define LORA_TX_POWER    17
+// Center frequency. (Future upgrade: cycle this for FHSS anti-jamming)
+#define LORA_FREQUENCY   433.0  
+
+// WIDER pipe: 250 kHz (doubles speed compared to 125 kHz)
+#define LORA_BANDWIDTH   250.0  
+
+// SHORTER chirps: SF7 compresses ToA to milliseconds (Max Speed, Medium Range)
+#define LORA_SF          7      
+
+// TIGHTER error correction: 4/5 rate drops redundant overhead bits
+#define LORA_CR          5      
+
+// Unique Sync Word to isolate your mesh from civilian LoRa traffic
+#define LORA_SYNC_WORD   0x34   
+
+// Max hardware power output (17 dBm for SX1278)
+#define LORA_TX_POWER    17     
 
 #define LORA_NSS_PIN     5
 #define LORA_DIO0_PIN    26
