@@ -65,9 +65,8 @@ The current prototype is undergoing continuous evaluation to bridge the gap towa
 This system is an academic engineering project developed at the **Department of Electronics and Communication Engineering, BMS College of Engineering, Bengaluru**.
 
 * **Krishna Gupta** - Hardware Integration & Cryptographic Architecture
-* **Kshitij D** - Software Development & RTOS Optimization
-* **Dhruv Kumar Koshta** / **Maneesh SM** - Network Topology & Link Budget Analysis
-
+* **Kshitij D** - Network Topology & Link Budget Analysis
+* **Dhruv Kumar Koshta** - Software Development & RTOS Optimization
 ## ⚠️ Disclaimer
 
 S.P.E.C.T.R.E. is currently an R&D prototype developed for academic and conceptual evaluation. It is not approved for active tactical deployment or commercial sale without strict compliance with national defense regulations and spectrum authority clearance.
