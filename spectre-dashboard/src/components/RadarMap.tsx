@@ -4,6 +4,23 @@
 // =============================================================================
 
 import React, { useRef, useEffect, useCallback, useState } from 'react';
+import type { TrustState } from '../types';
+
+interface NodePoint {
+  nodeId: string;
+  posX: number;
+  posY: number;
+  status: string;
+  anomalyScore: number;
+  rssi: number;
+  trustState: TrustState;
+}
+
+interface Props {
+  nodes: NodePoint[];
+  selectedNodeId: string | null;
+  onSelectNode: (nodeId: string) => void;
+}
 
 // ---- Configuration ----
 const SWEEP_PERIOD = 4000;        // Full rotation period in ms
@@ -31,7 +48,7 @@ const COLORS = {
   tooltipBorder: 'rgba(57, 255, 20, 0.4)',
 };
 
-const styles = {
+const styles: any = {
   container: {
     position: 'relative',
     width: '100%',
@@ -101,7 +118,7 @@ function drawTriangle(ctx, x, y, size, color) {
   ctx.restore();
 }
 
-export default function RadarMap({ nodes, selectedNodeId, onSelectNode }) {
+export default function RadarMap({ nodes, selectedNodeId, onSelectNode }: Props) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const animFrameRef = useRef(null);

@@ -2,12 +2,15 @@
   "name": "spectre-dashboard",
   "version": "1.0.0",
   "description": "S.P.E.C.T.R.E. Tactical Command Center Dashboard",
-  "main": "electron/main.js",
+  "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
-    "electron:dev": "electron .",
-    "build": "vite build",
-    "preview": "vite preview"
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "typecheck": "tsc --noEmit",
+    "electron:dev": "npm run build:electron && electron .",
+    "build": "npm run typecheck && vite build && npm run build:electron",
+    "preview": "vite preview",
+    "dist:electron": "npm run build && electron-builder"
   },
   "dependencies": {
     "react": "^19.0.0",
@@ -17,10 +20,30 @@
     "socket.io-client": "^4.8.0"
   },
   "devDependencies": {
+    "@types/node": "^22.13.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.0",
     "electron": "^33.0.0",
+    "electron-builder": "^25.1.8",
+    "electron-rebuild": "^3.2.9",
+    "typescript": "^5.6.3",
     "vite": "^6.0.0"
+  },
+  "build": {
+    "appId": "in.spectre.tcc",
+    "productName": "SPECTRE TCC",
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Utility"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ]
   }
 }

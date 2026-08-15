@@ -4,8 +4,27 @@
 // =============================================================================
 
 import React, { useState } from 'react';
+import type { TrustState } from '../types';
 
-const styles = {
+interface NodeRow {
+  nodeId: string;
+  status: string;
+  posX: number;
+  posY: number;
+  rssi: number;
+  anomalyScore: number;
+  lastSeen: number;
+  trustState: TrustState;
+}
+
+interface EventEntry {
+  id: string;
+  time: string;
+  severity: 'normal' | 'warning' | 'critical';
+  message: string;
+}
+
+const styles: any = {
   container: {
     display: 'flex',
     flexDirection: 'column',
@@ -178,7 +197,14 @@ function getJammingLevel(anomalyScore, rssi) {
   return { level: 'CLEAR', color: '#4B5320' };
 }
 
-export default function NodeTelemetryPanel({ nodes, selectedNodeId, onSelectNode, eventLog }) {
+interface Props {
+  nodes: NodeRow[];
+  selectedNodeId: string | null;
+  onSelectNode: (nodeId: string) => void;
+  eventLog: EventEntry[];
+}
+
+export default function NodeTelemetryPanel({ nodes, selectedNodeId, onSelectNode, eventLog }: Props) {
   const [hoveredRow, setHoveredRow] = useState(null);
   const [logExpanded, setLogExpanded] = useState(true);
 
@@ -202,6 +228,7 @@ export default function NodeTelemetryPanel({ nodes, selectedNodeId, onSelectNode
               <th style={styles.th}>Pos (X,Y)</th>
               <th style={styles.th}>RSSI</th>
               <th style={styles.th}>EW Threat</th>
+              <th style={styles.th}>Trust</th>
             </tr>
           </thead>
           <tbody>
@@ -280,6 +307,15 @@ export default function NodeTelemetryPanel({ nodes, selectedNodeId, onSelectNode
                         ⚠ {jamming.level}
                       </span>
                     )}
+                  </td>
+                  <td style={styles.td}>
+                    <span style={{
+                      color: node.trustState === 'trusted' ? '#39FF14' : '#FFBF00',
+                      fontSize: '9px',
+                      letterSpacing: '0.8px',
+                    }}>
+                      {node.trustState === 'trusted' ? 'TRUSTED' : 'PENDING'}
+                    </span>
                   </td>
                 </tr>
               );

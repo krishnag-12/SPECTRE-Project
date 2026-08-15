@@ -1,8 +1,7 @@
 // =============================================================================
 // S.P.E.C.T.R.E. TCC — Mock Serial Data Simulator
-// Generates realistic, moving nodes with drifting paths, fluctuating RSSI,
-// and pseudo-random EW jamming anomalies for frontend stress testing.
 // =============================================================================
+export {};
 
 const { Server } = require('socket.io');
 
@@ -11,7 +10,6 @@ function startMockStream(httpServer) {
     cors: { origin: '*' },
   });
 
-  // Base configurations for 3 field units relative to TCC (0,0)
   const nodes = [
     { nodeId: 'Alpha-1', posX: 40, posY: 60, angle: 0.5, status: 'ACTIVE', baseRssi: -65 },
     { nodeId: 'Bravo-3', posX: -80, posY: -30, angle: 2.1, status: 'ACTIVE', baseRssi: -72 },
@@ -20,22 +18,28 @@ function startMockStream(httpServer) {
 
   let tickCount = 0;
 
+  const statsInterval = setInterval(() => {
+    ioServer.emit('bridge_stats', {
+      mode: 'MOCK',
+      droppedFrames: 0,
+      connected: true,
+      portPath: 'mock://spectre',
+    });
+  }, 1000);
+
   const interval = setInterval(() => {
     tickCount++;
 
     const telemetryPackets = nodes.map((node) => {
-      // Simulate physical walking movement (Dead Reckoning simulation)
       node.posX += Math.sin(node.angle) * 1.2;
       node.posY += Math.cos(node.angle) * 1.2;
-      node.angle += (Math.random() - 0.5) * 0.2; // slight drifting paths
+      node.angle += (Math.random() - 0.5) * 0.2;
 
-      // Boundary wrap — keep nodes within a 500m operational radius
       const dist = Math.sqrt(node.posX * node.posX + node.posY * node.posY);
       if (dist > 450) {
-        node.angle += Math.PI; // reverse course
+        node.angle += Math.PI;
       }
 
-      // Generate random EW environment fluctuations
       const isJammed = Math.random() > 0.95;
       const rssiJitter = Math.floor(Math.random() * 15);
 
@@ -60,31 +64,30 @@ function startMockStream(httpServer) {
       };
     });
 
-    // Broadcast the full batch to the React app
     ioServer.emit('telemetry_matrix', telemetryPackets);
   }, 1000);
 
   ioServer.on('connection', (socket) => {
     console.log(`[MOCK SERIAL] Dashboard client connected: ${socket.id}`);
 
-    // Handle commands from the dashboard
     socket.on('command', (cmd) => {
-      console.log(`[MOCK SERIAL] Command received: ${JSON.stringify(cmd)}`);
+      if (!cmd?.commandId || !cmd?.nodeId || !cmd?.type) return;
 
-      // Simulate command acknowledgment
-      if (cmd.type === 'ZERO') {
-        const targetNode = nodes.find((n) => n.nodeId === cmd.nodeId);
-        if (targetNode) {
-          targetNode.status = 'ZEROIZED';
-          console.log(`[MOCK SERIAL] Node ${cmd.nodeId} ZEROIZED`);
-          socket.emit('command_ack', {
-            type: 'ZERO',
-            nodeId: cmd.nodeId,
-            success: true,
-            timestamp: Math.floor(Date.now() / 1000),
-          });
-        }
+      const targetNode = nodes.find((n) => n.nodeId === cmd.nodeId);
+      const ack = {
+        commandId: cmd.commandId,
+        nodeId: cmd.nodeId,
+        type: cmd.type,
+        success: !!targetNode,
+        outcomeCode: targetNode ? 'ACKED' : 'UNKNOWN_NODE',
+        timestamp: Math.floor(Date.now() / 1000),
+      };
+
+      if (targetNode && cmd.type === 'ZERO') {
+        targetNode.status = 'ZEROIZED';
       }
+
+      socket.emit('command_ack', ack);
     });
 
     socket.on('disconnect', () => {
@@ -94,9 +97,9 @@ function startMockStream(httpServer) {
 
   console.log('[MOCK SERIAL] Active: Broadcasting simulated tactical data streams...');
 
-  // Return cleanup function
   return () => {
     clearInterval(interval);
+    clearInterval(statsInterval);
     ioServer.close();
   };
 }

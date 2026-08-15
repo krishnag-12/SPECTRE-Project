@@ -1,17 +1,21 @@
 // =============================================================================
 // S.P.E.C.T.R.E. Tactical Command Center — Electron Main Process
 // =============================================================================
+export {};
 
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const http = require('http');
 const { startMockStream } = require('./mock-serial');
+const { startSerialBridge } = require('./serial-bridge');
 
 const IS_DEV = !app.isPackaged;
-const USE_MOCK = process.env.SPECTRE_MOCK === 'true' || IS_DEV;
+const envMock = process.env.SPECTRE_MOCK;
+const USE_MOCK = envMock ? envMock === 'true' : IS_DEV;
 
 let mainWindow = null;
 let httpServer = null;
+let stopBackend = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -30,7 +34,6 @@ function createWindow() {
     icon: path.join(__dirname, '..', 'public', 'favicon.ico'),
   });
 
-  // In dev, load Vite dev server; in production, load built files
   if (IS_DEV) {
     mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools({ mode: 'detach' });
@@ -48,12 +51,10 @@ function startBackend() {
 
   if (USE_MOCK) {
     console.log('[SPECTRE] Starting in MOCK mode — simulated telemetry active');
-    startMockStream(httpServer);
+    stopBackend = startMockStream(httpServer);
   } else {
-    // Real serial bridge will be loaded here in Phase 8
     console.log('[SPECTRE] Starting in LIVE mode — awaiting serial connection');
-    // const { startSerialBridge } = require('./serial-bridge');
-    // startSerialBridge(httpServer);
+    stopBackend = startSerialBridge(httpServer, ipcMain);
   }
 
   httpServer.listen(3001, '127.0.0.1', () => {
@@ -61,7 +62,6 @@ function startBackend() {
   });
 }
 
-// ---- IPC Handlers for window controls ----
 ipcMain.on('window:minimize', () => mainWindow?.minimize());
 ipcMain.on('window:maximize', () => {
   if (mainWindow?.isMaximized()) {
@@ -72,7 +72,6 @@ ipcMain.on('window:maximize', () => {
 });
 ipcMain.on('window:close', () => mainWindow?.close());
 
-// ---- App Lifecycle ----
 app.whenReady().then(() => {
   startBackend();
   createWindow();
@@ -83,6 +82,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  if (stopBackend) stopBackend();
   if (httpServer) httpServer.close();
   if (process.platform !== 'darwin') app.quit();
 });

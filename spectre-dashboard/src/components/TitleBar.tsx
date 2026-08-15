@@ -4,6 +4,10 @@
 
 import React, { useState, useEffect } from 'react';
 
+interface Props {
+  connected: boolean;
+}
+
 const styles = {
   titleBar: {
     display: 'flex',
@@ -109,7 +113,7 @@ const styles = {
   closeBtn: { background: '#FF0000' },
 };
 
-export default function TitleBar({ connected }) {
+export default function TitleBar({ connected }: Props) {
   const [time, setTime] = useState('');
   const [hoveredBtn, setHoveredBtn] = useState(null);
 

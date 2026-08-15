@@ -3,8 +3,10 @@
 //                  for Remote Environments
 // =============================================================================
 
-#define SIMULATOR_MODE 0   
-#define ENABLE_RADIO_TASK 1  
+#define SIMULATOR_MODE 0
+#define ENABLE_RADIO_TASK 1
+#define C2_BRIDGE_MODE 1
+#define NODE_ID "Alpha-1"
 
 #include <Arduino.h>
 #include <Wire.h>
@@ -78,6 +80,7 @@ size_t pubKeyLen;
 
 #define MAX_PAYLOAD_LEN   128
 #define QUEUE_DEPTH       5
+#define NODE_ID_MAX_LEN   16
 
 // =============================================================================
 // DATA STRUCTURES
@@ -94,6 +97,7 @@ struct __attribute__((packed)) LoRaPacket {
     uint8_t  messageID;
     uint8_t  hopCount;
     uint8_t  payloadLen;                        
+    char     nodeId[NODE_ID_MAX_LEN];
     uint8_t  iv[12];                            
     uint8_t  tag[16];                           
     uint8_t  encrypted[MAX_PAYLOAD_LEN];        
@@ -144,12 +148,23 @@ static const char* tacMessages[] = {
     "BROADCASTING PUBLIC ECDH KEY..."
 };
 
+#if C2_BRIDGE_MODE
+  #define DEBUG_PRINTLN(msg) do {} while (0)
+  #define DEBUG_PRINTF(...) do {} while (0)
+#else
+  #define DEBUG_PRINTLN(msg) Serial.println(msg)
+  #define DEBUG_PRINTF(...) Serial.printf(__VA_ARGS__)
+#endif
+
+static char serialCmdBuffer[128];
+static size_t serialCmdPos = 0;
+
 // =============================================================================
 // CRYPTO HELPERS
 // =============================================================================
 
 void initCryptoAndGenerateKeys() {
-    Serial.println("[Crypto] Initializing RNG and ECDH...");
+    DEBUG_PRINTLN("[Crypto] Initializing RNG and ECDH...");
     mbedtls_ecdh_init(&ecdh_ctx);
     mbedtls_ctr_drbg_init(&ctr_drbg);
     mbedtls_entropy_init(&entropy);
@@ -157,18 +172,18 @@ void initCryptoAndGenerateKeys() {
     mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy, (const unsigned char *)pers, strlen(pers));
     mbedtls_ecdh_setup(&ecdh_ctx, MBEDTLS_ECP_DP_SECP256R1);
     mbedtls_ecdh_make_public(&ecdh_ctx, &pubKeyLen, myPublicKey, sizeof(myPublicKey), mbedtls_ctr_drbg_random, &ctr_drbg);
-    Serial.println("[Crypto] Keys generated successfully.");
+    DEBUG_PRINTLN("[Crypto] Keys generated successfully.");
 }
 
 bool deriveSharedAESKey(const uint8_t* peerPublicKey, size_t peerKeyLen) {
-    Serial.println("[Crypto] Deriving shared secret from peer key...");
+    DEBUG_PRINTLN("[Crypto] Deriving shared secret from peer key...");
     mbedtls_ecdh_read_public(&ecdh_ctx, peerPublicKey, peerKeyLen);
     uint8_t sharedSecret[32];
     size_t secretLen = 0;
     mbedtls_ecdh_calc_secret(&ecdh_ctx, &secretLen, sharedSecret, sizeof(sharedSecret), mbedtls_ctr_drbg_random, &ctr_drbg);
     mbedtls_sha256(sharedSecret, secretLen, AES_KEY, 0);
     keyExchangeComplete = true;
-    Serial.println("[Crypto] AES_KEY derived and locked. Comms are now secure.");
+    DEBUG_PRINTLN("[Crypto] AES_KEY derived and locked. Comms are now secure.");
     return true;
 }
 
@@ -195,6 +210,97 @@ static bool aes256Decrypt(const uint8_t* ciphertext, int len, const uint8_t* iv,
     return false;
 }
 
+static void jsonEscape(const char* input, char* output, size_t outSize) {
+    size_t j = 0;
+    for (size_t i = 0; input[i] != '\0' && j + 2 < outSize; i++) {
+        const char c = input[i];
+        if (c == '"' || c == '\\') {
+            output[j++] = '\\';
+            output[j++] = c;
+        } else if (c == '\n' || c == '\r') {
+            output[j++] = ' ';
+        } else {
+            output[j++] = c;
+        }
+    }
+    output[j] = '\0';
+}
+
+static bool isSupportedCommandType(const char* type) {
+    return strcmp(type, "PING") == 0 || strcmp(type, "REKEY") == 0 || strcmp(type, "ZERO") == 0;
+}
+
+static void emitCommandAck(const char* commandId, const char* nodeId, const char* type, bool success, const char* outcomeCode) {
+#if C2_BRIDGE_MODE
+    Serial.printf(
+        "{\"kind\":\"ack\",\"commandId\":\"%s\",\"nodeId\":\"%s\",\"type\":\"%s\",\"success\":%s,\"outcomeCode\":\"%s\",\"timestamp\":%lu}\n",
+        commandId,
+        nodeId,
+        type,
+        success ? "true" : "false",
+        outcomeCode,
+        (unsigned long)(millis() / 1000)
+    );
+#else
+    (void)commandId;
+    (void)nodeId;
+    (void)type;
+    (void)success;
+    (void)outcomeCode;
+#endif
+}
+
+static bool queueBridgeCommand(const char* type, const char* targetNodeId) {
+    MessageEvent txMsg;
+    memset(&txMsg, 0, sizeof(txMsg));
+    txMsg.hopCount = 3;
+
+    if (strcmp(type, "PING") == 0) {
+        txMsg.messageID = 0x90;
+    } else if (strcmp(type, "REKEY") == 0) {
+        txMsg.messageID = 0xFE;
+    } else if (strcmp(type, "ZERO") == 0) {
+        txMsg.messageID = 0x92;
+    } else {
+        return false;
+    }
+
+    snprintf(txMsg.payload, MAX_PAYLOAD_LEN, "CMD:%s:%s", type, targetNodeId);
+    return xQueueSend(txQueue, &txMsg, 0) == pdPASS;
+}
+
+static void handleBridgeSerialLine(char* line) {
+#if C2_BRIDGE_MODE
+    if (strncmp(line, "CMD:", 4) != 0) {
+        return;
+    }
+
+    char* savePtr = nullptr;
+    char* token = strtok_r(line, ":", &savePtr);
+    char* type = strtok_r(nullptr, ":", &savePtr);
+    char* targetNodeId = strtok_r(nullptr, ":", &savePtr);
+    char* commandId = strtok_r(nullptr, ":", &savePtr);
+
+    if (!token || !type || !targetNodeId || !commandId) {
+        emitCommandAck(commandId ? commandId : "missing", targetNodeId ? targetNodeId : "unknown", type ? type : "UNKNOWN", false, "INVALID_FORMAT");
+        return;
+    }
+    if (!isSupportedCommandType(type)) {
+        emitCommandAck(commandId, targetNodeId, type, false, "UNSUPPORTED_COMMAND");
+        return;
+    }
+    if (!keyExchangeComplete && strcmp(type, "REKEY") != 0) {
+        emitCommandAck(commandId, targetNodeId, type, false, "NOT_ARMED");
+        return;
+    }
+
+    const bool queued = queueBridgeCommand(type, targetNodeId);
+    emitCommandAck(commandId, targetNodeId, type, queued, queued ? "ACKED" : "QUEUE_FULL");
+#else
+    (void)line;
+#endif
+}
+
 // =============================================================================
 // CORE 0: RADIO TASK
 // =============================================================================
@@ -203,7 +309,7 @@ void IRAM_ATTR onDio0Rise() { rxFlag = true; }
 #endif
 
 void taskRadioAndCrypto(void* pvParameters) {
-    Serial.printf("[Radio] Task started on Core %d\n", xPortGetCoreID());
+    DEBUG_PRINTF("[Radio] Task started on Core %d\n", xPortGetCoreID());
     
     int state = RADIOLIB_ERR_NONE; 
     LoRaPacket pkt;
@@ -220,7 +326,7 @@ void taskRadioAndCrypto(void* pvParameters) {
     }
     attachInterrupt(digitalPinToInterrupt(LORA_DIO0_PIN), onDio0Rise, RISING);
     radio.startReceive();
-    Serial.println("[Radio] LoRa initialised OK.");
+    DEBUG_PRINTLN("[Radio] LoRa initialised OK.");
 #endif
 
     for (;;) {
@@ -250,6 +356,8 @@ void taskRadioAndCrypto(void* pvParameters) {
             pkt.magicByte  = 0xAB;
             pkt.messageID  = outMsg.messageID;
             pkt.hopCount   = outMsg.hopCount;
+            strncpy(pkt.nodeId, NODE_ID, NODE_ID_MAX_LEN - 1);
+            pkt.nodeId[NODE_ID_MAX_LEN - 1] = '\0';
             esp_fill_random(pkt.iv, 12);
             int cLen = aes256Encrypt(outMsg.payload, pkt.iv, pkt.encrypted, pkt.tag);
             pkt.payloadLen = (uint8_t)cLen;
@@ -288,6 +396,21 @@ void taskRadioAndCrypto(void* pvParameters) {
                     bool authOk = aes256Decrypt(rxPkt->encrypted, rxPkt->payloadLen, rxPkt->iv, rxPkt->tag, inMsg.payload);
                     if (authOk) {
                         xQueueSend(rxQueue, &inMsg, 0);
+#if C2_BRIDGE_MODE
+                        char escapedPayload[MAX_PAYLOAD_LEN * 2];
+                        jsonEscape(inMsg.payload, escapedPayload, sizeof(escapedPayload));
+                        const char* packetNodeId = rxPkt->nodeId[0] != '\0' ? rxPkt->nodeId : "Unknown-0";
+                        Serial.printf(
+                            "{\"nodeId\":\"%s\",\"msgId\":%u,\"hopCount\":%u,\"status\":\"ACTIVE\",\"posX\":0.0,\"posY\":0.0,\"rssi\":%d,\"snr\":%.2f,\"anomalyScore\":0.0,\"payload\":\"%s\",\"timestamp\":%lu}\n",
+                            packetNodeId,
+                            (unsigned int)rxPkt->messageID,
+                            (unsigned int)rxPkt->hopCount,
+                            (int)radio.getRSSI(),
+                            (double)radio.getSNR(),
+                            escapedPayload,
+                            (unsigned long)(millis() / 1000)
+                        );
+#endif
                         if (rxPkt->hopCount > 0) {
                             rxPkt->hopCount--;
                             radio.standby();
@@ -396,11 +519,12 @@ static bool     composePending = false;
 void setup() {
     Serial.begin(115200);
     delay(500);
-    Serial.println("\n==============================");
-    Serial.println("  S.P.E.C.T.R.E. OS BOOTING");
-    Serial.println("==============================");
+    DEBUG_PRINTLN("\n==============================");
+    DEBUG_PRINTLN("  S.P.E.C.T.R.E. OS BOOTING");
+    DEBUG_PRINTLN("==============================");
 
-    Serial.println("[Setup] Initializing display...");
+#if !C2_BRIDGE_MODE
+    DEBUG_PRINTLN("[Setup] Initializing display...");
     Wire.begin(21, 22);
     Wire.setClock(100000); 
     delay(50); // Let caps stabilize
@@ -408,7 +532,7 @@ void setup() {
     // true  = perform software reset sequence (critical for clone SSD1306 modules)
     // false = don't call Wire.begin() internally (we already locked the pins)
     if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C, true, false)) {
-        Serial.println(F("\n\n[FATAL] SSD1306 allocation failed. Check wiring!\n\n"));
+        DEBUG_PRINTLN(F("\n\n[FATAL] SSD1306 allocation failed. Check wiring!\n\n"));
         while (true) { delay(100); } 
     }
     
@@ -427,12 +551,13 @@ void setup() {
     display.println("DISPLAY ONLINE");
     display.display();
 
-    Serial.println("[Setup] Display OK.");
+    DEBUG_PRINTLN("[Setup] Display OK.");
     delay(2500); // Wait 2.5 seconds to admire your fully working display
     // =========================================================================
 
     currentMenu = MENU_MAIN;
     drawMainMenu();
+#endif
 
     initCryptoAndGenerateKeys();
 
@@ -440,20 +565,40 @@ void setup() {
     rxQueue = xQueueCreate(QUEUE_DEPTH, sizeof(MessageEvent));
     
 #if ENABLE_RADIO_TASK
-    Serial.println("[Setup] Starting Background Radio Task on Core 0...");
+    DEBUG_PRINTLN("[Setup] Starting Background Radio Task on Core 0...");
     // 49152 byte stack allocation safely buffers mbedTLS memory demands
     xTaskCreatePinnedToCore(taskRadioAndCrypto, "RadioTask", 49152, NULL, 3, &taskRadioHandle, 0);
 #endif
 
+#if !C2_BRIDGE_MODE
     pinMode(BTN_UP_PIN,   INPUT_PULLUP);
     pinMode(BTN_DOWN_PIN, INPUT_PULLUP);
     pinMode(BTN_SEL_PIN,  INPUT_PULLUP);
     ButtonConfig* config = ButtonConfig::getSystemButtonConfig();
     config->setEventHandler(handleButtonEvent);
     config->setFeature(ButtonConfig::kFeatureClick);
+#endif
 }
 
 void loop() {
+#if C2_BRIDGE_MODE
+    while (Serial.available() > 0) {
+        const char c = (char)Serial.read();
+        if (c == '\n') {
+            serialCmdBuffer[serialCmdPos] = '\0';
+            handleBridgeSerialLine(serialCmdBuffer);
+            serialCmdPos = 0;
+        } else if (c != '\r') {
+            if (serialCmdPos < sizeof(serialCmdBuffer) - 1) {
+                serialCmdBuffer[serialCmdPos++] = c;
+            } else {
+                serialCmdPos = 0;
+            }
+        }
+    }
+    taskYIELD();
+    return;
+#else
     // Non-blocking UI timer for composition screens
     if (composePending && (millis() - composeDoneMs > 1200)) {
         composePending = false;
@@ -528,4 +673,5 @@ void loop() {
     
     // Yield to the RTOS scheduler to allow background tasks to run without blocking
     taskYIELD(); 
+#endif
 }

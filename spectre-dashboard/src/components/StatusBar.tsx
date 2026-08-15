@@ -4,6 +4,18 @@
 
 import React from 'react';
 
+interface Props {
+  stats: {
+    connected: boolean;
+    packetsReceived: number;
+    droppedFrames: number;
+    uptime: number;
+    mode: 'MOCK' | 'LIVE';
+    portPath: string | null;
+  };
+  nodeCount: number;
+}
+
 const styles = {
   bar: {
     display: 'flex',
@@ -63,14 +75,14 @@ function formatUptime(seconds) {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-export default function StatusBar({ stats, nodeCount }) {
+export default function StatusBar({ stats, nodeCount }: Props) {
   return (
     <div style={styles.bar}>
       <div style={styles.section}>
         <div style={styles.item}>
           <div style={{ ...styles.dot, ...(stats.connected ? styles.dotGreen : styles.dotRed) }} />
           <span style={styles.value}>
-            {stats.connected ? 'MOCK SERIAL' : 'DISCONNECTED'}
+            {stats.connected ? `${stats.mode} LINK` : 'DISCONNECTED'}
           </span>
         </div>
 

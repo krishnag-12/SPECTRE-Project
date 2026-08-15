@@ -41,6 +41,7 @@
 #define LORA_DIO1_PIN    RADIOLIB_NC
 
 #define MAX_PAYLOAD_LEN  128
+#define NODE_ID_MAX_LEN  16
 
 // =============================================================================
 // PACKET STRUCTURES
@@ -50,6 +51,7 @@ struct __attribute__((packed)) LoRaPacket {
     uint8_t  messageID;
     uint8_t  hopCount;
     uint8_t  payloadLen;                        
+    char     nodeId[NODE_ID_MAX_LEN];
     uint8_t  iv[12];                            
     uint8_t  tag[16];                           
     uint8_t  encrypted[MAX_PAYLOAD_LEN];        
@@ -197,8 +199,9 @@ void taskTestbenchRadio(void* pvParameters) {
                     } else {
                         LoRaPacket* rxPkt = (LoRaPacket*)buf;
                         char plaintext[MAX_PAYLOAD_LEN];
+                        const char* senderNodeId = rxPkt->nodeId[0] != '\0' ? rxPkt->nodeId : "Unknown-0";
                         
-                        Serial.printf("[Crypto] >>> ENCRYPTED PACKET INCOMING (ID: %u) <<<\n", rxPkt->messageID);
+                        Serial.printf("[Crypto] >>> ENCRYPTED PACKET INCOMING (ID: %u | Sender: %s) <<<\n", rxPkt->messageID, senderNodeId);
                         
                         // Pass cipher, initialization vector, and auth tag into mbedTLS
                         bool authOk = aes256Decrypt(rxPkt->encrypted, rxPkt->payloadLen, rxPkt->iv, rxPkt->tag, plaintext);
@@ -206,6 +209,7 @@ void taskTestbenchRadio(void* pvParameters) {
                         if (authOk) {
                             Serial.println("==================================================");
                             Serial.println(" [ DECRYPTION SUCCESSFUL - AUTHENTICATION VALID ]");
+                            Serial.printf(" Node Callsign: %s\n", senderNodeId);
                             Serial.printf(" Message Payload: \"%s\"\n", plaintext);
                             Serial.println("==================================================");
                         } else {

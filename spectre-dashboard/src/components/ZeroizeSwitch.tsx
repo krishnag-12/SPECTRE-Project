@@ -4,11 +4,12 @@
 // =============================================================================
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import type { CommandPayload } from '../types';
 
 const SLIDE_THRESHOLD = 0.85;    // Must drag 85% of track width to arm
 const COUNTDOWN_SECONDS = 3;     // Countdown before execution
 
-const styles = {
+const styles: any = {
   container: {
     padding: '12px',
     background: '#1A1A1A',
@@ -137,7 +138,13 @@ const styles = {
   },
 };
 
-export default function ZeroizeSwitch({ nodeId, onExecute, disabled }) {
+interface Props {
+  nodeId: string;
+  onExecute: (command: CommandPayload) => void;
+  disabled: boolean;
+}
+
+export default function ZeroizeSwitch({ nodeId, onExecute, disabled }: Props) {
   const [slidePos, setSlidePos] = useState(0);
   const [isArmed, setIsArmed] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
