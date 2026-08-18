@@ -23,9 +23,9 @@ Based on an architectural review of the `spectre-main` and `spectre-dashboard` d
 
 ## 2. Implementation Roadmap
 
-### Sprint A: C2 Gateway Live Hardware Integration (IN PROGRESS)
+### Sprint A: C2 Gateway Live Hardware Integration — ✅ COMPLETE
 
-*(See `REMAINING_WORK_DHRUV.md` for granular details. Dhruv completed the dashboard serial bridge and main node ID parts, but the dedicated testbench conversion remains.)*
+*(See `REMAINING_WORK_DHRUV.md` for granular details.)*
 
 #### [MODIFY] `spectre-dashboard/electron/serial-bridge.ts` — ✅ COMPLETE
 - [x] Build the Node.js serial module using the `serialport` package (115200 baud).
@@ -35,12 +35,12 @@ Based on an architectural review of the `spectre-main` and `spectre-dashboard` d
 #### [MODIFY] `spectre-main/src/main.cpp` (Soldier Terminal Firmware) — ✅ COMPLETE
 - [x] Implement static `#define NODE_ID "Alpha-1"` callsigns for the field nodes to transmit.
 
-#### [MODIFY] `spectre-testbench/src/main.cpp` (Repurposing as Dedicated C2 Gateway Firmware) — ❌ PENDING (CURRENT FOCUS)
-- [ ] Convert the testbench project into the dedicated firmware for the Commander's dashboard ESP32.
-- [ ] Strip out any UI/OLED rendering logic to save resources, as the Electron app handles the UI.
-- [ ] Program it to decrypt incoming AES LoRa payloads and print them to the USB serial port as clean, newline-delimited JSON strings.
-- [ ] Add a serial RX task to ingest commands from the Electron dashboard and broadcast them out over the LoRa mesh.
-- [ ] There should be an option to connect the hardware (esp32) on the dashboard (Dashboard UI for connection is complete, waiting for the hardware firmware).
+#### [MODIFY] `spectre-testbench/src/main.cpp` (Repurposing as Dedicated C2 Gateway Firmware) — ✅ COMPLETE
+- [x] Convert the testbench project into the dedicated firmware for the Commander's dashboard ESP32.
+- [x] Strip out any UI/OLED rendering logic to save resources, as the Electron app handles the UI.
+- [x] Program it to decrypt incoming AES LoRa payloads and print them to the USB serial port as clean, newline-delimited JSON strings.
+- [x] Add a serial RX task to ingest commands from the Electron dashboard and broadcast them out over the LoRa mesh.
+- [x] There should be an option to connect the hardware (esp32) on the dashboard (Dashboard UI for connection is complete, waiting for the hardware firmware).
 
 ### Sprint B: Cryptographic FHSS & The Rendezvous Problem
 
