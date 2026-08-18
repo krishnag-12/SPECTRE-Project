@@ -11,7 +11,6 @@ Based on an architectural review of the `spectre-main` and `spectre-dashboard` d
 - **Cryptographic Engine:** `mbedTLS` library is successfully linked. ECDH public/private key generation, AES-256-GCM encryption/decryption, and SHA256 hashing are functional in `main.cpp`.
 - **RTOS Architecture:** Core FreeRTOS structures exist (Task queues, `ENABLE_RADIO_TASK`).
 - **Physical Layer Parameters:** LPD constraints (SF7, 250 kHz Bandwidth) are hardcoded.
-- **C2 Bridge Mode:** `C2_BRIDGE_MODE` compile-time flag enables the ESP32 to act as a USB serial gateway, emitting decrypted LoRa telemetry as newline-delimited JSON and accepting `CMD:TYPE:NODE_ID:commandId\n` commands from the dashboard.
 - **Node Identity:** `NODE_ID` macro provides static compile-time callsigns embedded in LoRaPacket headers.
 
 ### Command & Control (C2) Dashboard (`spectre-dashboard`)
@@ -24,18 +23,24 @@ Based on an architectural review of the `spectre-main` and `spectre-dashboard` d
 
 ## 2. Implementation Roadmap
 
-### Sprint A: C2 Gateway Live Hardware Integration — ✅ COMPLETE
-*(Merged via PR #1 by @Dhruvkoshta)*
+### Sprint A: C2 Gateway Live Hardware Integration (IN PROGRESS)
 
-#### Completed Deliverables:
-- [x] **Serial Bridge** (`serial-bridge.ts`) — Line-buffered JSON ingestion, Socket.IO bridge, IPC port management (`serial:list`, `serial:connect`, `serial:disconnect`, `serial:status`), command write-back, dropped frame counter.
-- [x] **C2 Bridge Mode** (`spectre-main/src/main.cpp`) — `#define C2_BRIDGE_MODE 1` suppresses OLED/button UI, emits JSON telemetry with `radio.getRSSI()` and `radio.getSNR()`, reads serial commands.
-- [x] **NODE_ID Macro** (`spectre-main/src/main.cpp`) — `#define NODE_ID "Alpha-1"` with 16-byte `nodeId` field in `LoRaPacket` struct.
-- [x] **Command Protocol** — `CMD:TYPE:NODE_ID:commandId\n` with bidirectional ack: `{"kind":"ack","commandId":"...","nodeId":"...","type":"...","success":true,"outcomeCode":"ACKED","timestamp":...}`.
-- [x] **Electron Main Wiring** (`main.ts`) — `startSerialBridge(httpServer, ipcMain)` hooked in live mode.
-- [x] **TypeScript Migration** — Full `.js/.jsx` → `.ts/.tsx` migration with `tsconfig.json`, `types.ts`, `global.d.ts`.
-- [x] **Electron Packaging** — `electron-builder` config, `dist:electron` script.
-- [x] **Hardware Setup Guide** — `HARDWARE_SETUP_AND_FLASHING.md` with end-to-end flashing and verification checklist.
+*(See `REMAINING_WORK_DHRUV.md` for granular details. Dhruv completed the dashboard serial bridge and main node ID parts, but the dedicated testbench conversion remains.)*
+
+#### [MODIFY] `spectre-dashboard/electron/serial-bridge.ts` — ✅ COMPLETE
+- [x] Build the Node.js serial module using the `serialport` package (115200 baud).
+- [x] Ingest real telemetry from the USB stream, parse the JSON, and bridge it to React via Socket.IO.
+- [x] Implement command write-back logic (e.g., `CMD:ZERO:Alpha-1\n`).
+
+#### [MODIFY] `spectre-main/src/main.cpp` (Soldier Terminal Firmware) — ✅ COMPLETE
+- [x] Implement static `#define NODE_ID "Alpha-1"` callsigns for the field nodes to transmit.
+
+#### [MODIFY] `spectre-testbench/src/main.cpp` (Repurposing as Dedicated C2 Gateway Firmware) — ❌ PENDING (CURRENT FOCUS)
+- [ ] Convert the testbench project into the dedicated firmware for the Commander's dashboard ESP32.
+- [ ] Strip out any UI/OLED rendering logic to save resources, as the Electron app handles the UI.
+- [ ] Program it to decrypt incoming AES LoRa payloads and print them to the USB serial port as clean, newline-delimited JSON strings.
+- [ ] Add a serial RX task to ingest commands from the Electron dashboard and broadcast them out over the LoRa mesh.
+- [ ] There should be an option to connect the hardware (esp32) on the dashboard (Dashboard UI for connection is complete, waiting for the hardware firmware).
 
 ### Sprint B: Cryptographic FHSS & The Rendezvous Problem
 
