@@ -25,7 +25,7 @@ Based on an architectural review of the `spectre-main` and `spectre-dashboard` d
 
 ### Sprint A: C2 Gateway Live Hardware Integration — ✅ COMPLETE
 
-*(See `REMAINING_WORK_DHRUV.md` for granular details.)*
+*(All Sprint A deliverables verified and integrated.)*
 
 #### [MODIFY] `spectre-dashboard/electron/serial-bridge.ts` — ✅ COMPLETE
 - [x] Build the Node.js serial module using the `serialport` package (115200 baud).
@@ -35,7 +35,7 @@ Based on an architectural review of the `spectre-main` and `spectre-dashboard` d
 #### [MODIFY] `spectre-main/src/main.cpp` (Soldier Terminal Firmware) — ✅ COMPLETE
 - [x] Implement static `#define NODE_ID "Alpha-1"` callsigns for the field nodes to transmit.
 
-#### [MODIFY] `spectre-testbench/src/main.cpp` (Repurposing as Dedicated C2 Gateway Firmware) — ✅ COMPLETE
+#### [MODIFY] `spectre-c2-gateway/src/main.cpp` (Dedicated C2 Gateway Firmware) — ✅ COMPLETE
 - [x] Convert the testbench project into the dedicated firmware for the Commander's dashboard ESP32.
 - [x] Strip out any UI/OLED rendering logic to save resources, as the Electron app handles the UI.
 - [x] Program it to decrypt incoming AES LoRa payloads and print them to the USB serial port as clean, newline-delimited JSON strings.

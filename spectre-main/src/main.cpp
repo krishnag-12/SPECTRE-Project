@@ -5,7 +5,7 @@
 
 #define SIMULATOR_MODE 0
 #define ENABLE_RADIO_TASK 1
-#define C2_BRIDGE_MODE 1
+#define C2_BRIDGE_MODE 0
 #define NODE_ID "Alpha-1"
 
 #include <Arduino.h>
