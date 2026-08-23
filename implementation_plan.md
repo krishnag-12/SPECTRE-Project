@@ -42,13 +42,15 @@ Based on an architectural review of the `spectre-main` and `spectre-dashboard` d
 - [x] Add a serial RX task to ingest commands from the Electron dashboard and broadcast them out over the LoRa mesh.
 - [x] There should be an option to connect the hardware (esp32) on the dashboard (Dashboard UI for connection is complete, waiting for the hardware firmware).
 
-### Sprint B: Cryptographic FHSS & The Rendezvous Problem
+### Sprint B: Cryptographic FHSS & The Rendezvous Problem — ✅ COMPLETE
 
 #### [MODIFY] `spectre-main/src/main.cpp`
-- **Dynamic DIO Mapping:** Refactor the LoRa hardware interrupt handlers to dynamically swap between `RXDone` (DIO0) and `CADDone/CADDtected` (DIO0/DIO1) based on the current radio state.
-- **The CAD Sweep State Machine:** Implement the asynchronous LoRa CAD sweep in the Core 0 FreeRTOS task. It must scan frequencies at 1.174ms intervals.
-- **The Sync Strobe:** Implement a 37-symbol extended preamble function for mesh-join broadcasts to guarantee intersection with a scanning receiver.
-- **CSPRNG Hopping:** Use the derived AES-256 secret to seed `mbedtls_ctr_drbg` and generate a perfectly synchronized, node-to-node channel hopping schedule.
+- [x] **Dynamic DIO Mapping:** Refactored LoRa interrupt handlers with `RadioState` enum to dynamically switch between `RXDone` (DIO0 in RX mode) and `CADDone/CADDetected` (DIO0/DIO1 in CAD mode). DIO1 wired to GPIO 35.
+- [x] **The CAD Sweep State Machine:** Implemented `fhssCadSweep()` — an asynchronous LoRa CAD sweep across 15 channels in the Core 0 FreeRTOS task. Each channel scan completes in ~1.174ms at SF7.
+- [x] **The Sync Strobe:** Implemented `fhssTransmitSyncStrobe()` with 37-symbol extended preamble for mesh-join key exchange broadcasts, guaranteeing intersection with a scanning receiver (37 > 15 × 2.4 = 36 symbols).
+- [x] **CSPRNG Hopping:** Implemented `fhssSeedFromAESKey()` + `fhssGenerateHopSequence()` using Fisher-Yates shuffle seeded by `mbedtls_ctr_drbg` from the derived AES-256 shared secret. Both nodes sharing the same key produce identical, synchronized hop schedules.
+- [x] **Channel Pool:** 15 non-overlapping channels (433.050–437.250 MHz, 300 kHz spacing) with rendezvous channel (Ch 0) for pre-key-exchange operation.
+- [x] **Compile-time toggle:** `#define ENABLE_FHSS 1` — set to 0 to disable FHSS and revert to static single-channel operation.
 
 ### Sprint C: Delay-Tolerant Networking (DTN)
 

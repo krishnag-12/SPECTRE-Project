@@ -1,6 +1,6 @@
 # S.P.E.C.T.R.E. Tactical Command Center — Operational Setup & Flashing Guide
 
-This guide provides step-by-step instructions for flashing firmware to ESP32 hardware nodes, running the diagnostic testbench, and connecting the Tactical Command Center (TCC) dashboard to real hardware over USB serial.
+This guide provides step-by-step instructions for flashing firmware to ESP32 hardware nodes, running the C2 Gateway, and connecting the Tactical Command Center (TCC) dashboard to real hardware over USB serial.
 
 ---
 
@@ -8,15 +8,15 @@ This guide provides step-by-step instructions for flashing firmware to ESP32 har
 
 ```
  +------------------------+        LoRa Mesh        +------------------------+
- |   ESP32 Field Node     | <---------------------> |   Diagnostic Testbench |
- | (spectre-main, C2=0)   |    AES-256 GCM SF7      |   (spectre-testbench)  |
- +------------------------+                         +------------------------+
+ |   ESP32 Field Node     | <---------------------> |   ESP32 Field Node     |
+ | (spectre-main, C2=0)   |    AES-256 GCM SF7      | (spectre-main, C2=0)   |
+ +------------------------+    FHSS 15-Channel       +------------------------+
              ^
-             | LoRa Mesh (433 MHz, SF7, BW 250kHz)
+             | LoRa Mesh (433 MHz, SF7, BW 250kHz, FHSS)
              v
  +------------------------+      USB Serial         +------------------------+
- |  ESP32 C2 Base Station | ----------------------> |  SPECTRE TCC Dashboard |
- | (spectre-main, C2=1)   |   115200 Baud JSON      |  (spectre-dashboard)   |
+ |  ESP32 C2 Gateway      | ----------------------> |  SPECTRE TCC Dashboard |
+ | (spectre-c2-gateway)   |   115200 Baud JSON      |  (spectre-dashboard)   |
  +------------------------+ <---------------------- +------------------------+
                                 Command Write-Back
 ```
@@ -31,7 +31,7 @@ This guide provides step-by-step instructions for flashing firmware to ESP32 har
 3. **USB-to-UART Drivers**: CP210x or CH340 drivers (depending on your ESP32 board)
 4. **Hardware**:
    - 2x or 3x ESP32 Development Boards
-   - SX1278 / SX1276 LoRa Transceiver Modules (SPI wiring: NSS=5, DIO0=26, RST=14)
+   - SX1278 / SX1276 LoRa Transceiver Modules (SPI wiring: NSS=5, DIO0=26, RST=14, DIO1=35 for FHSS)
    - Micro-USB / USB-C Cables
 
 ---

@@ -1,11 +1,13 @@
 // =============================================================================
 // S.P.E.C.T.R.E. - Secure Portable Encrypted Communication Terminal
 //                  for Remote Environments
+// Sprint B: Cryptographic FHSS & The Rendezvous Problem
 // =============================================================================
 
 #define SIMULATOR_MODE 0
 #define ENABLE_RADIO_TASK 1
 #define C2_BRIDGE_MODE 0
+#define ENABLE_FHSS 1
 #define NODE_ID "Alpha-1"
 
 #include <Arduino.h>
@@ -33,28 +35,76 @@ using namespace ace_button;
 // PIN DEFINITIONS
 // =============================================================================
 
-// Center frequency. (Future upgrade: cycle this for FHSS anti-jamming)
-#define LORA_FREQUENCY   433.0  
+// Base frequency (Channel 0). FHSS hops across a pool offset from this.
+#define LORA_BASE_FREQUENCY   433.0
 
 // WIDER pipe: 250 kHz (doubles speed compared to 125 kHz)
-#define LORA_BANDWIDTH   250.0  
+#define LORA_BANDWIDTH   250.0
 
 // SHORTER chirps: SF7 compresses ToA to milliseconds (Max Speed, Medium Range)
-#define LORA_SF          7      
+#define LORA_SF          7
 
 // TIGHTER error correction: 4/5 rate drops redundant overhead bits
-#define LORA_CR          5      
+#define LORA_CR          5
 
 // Unique Sync Word to isolate your mesh from civilian LoRa traffic
-#define LORA_SYNC_WORD   0x34   
+#define LORA_SYNC_WORD   0x34
 
 // Max hardware power output (17 dBm for SX1278)
-#define LORA_TX_POWER    17     
+#define LORA_TX_POWER    17
 
 #define LORA_NSS_PIN     5
 #define LORA_DIO0_PIN    26
 #define LORA_RESET_PIN   14
-#define LORA_DIO1_PIN    RADIOLIB_NC
+// DIO1 is required for CAD-Detected interrupt in FHSS mode.
+// Wire SX1278 DIO1 to ESP32 GPIO 35 (input-only pin, safe for ISR).
+#define LORA_DIO1_PIN    35
+
+// =============================================================================
+// FHSS CHANNEL POOL & HOPPING CONFIGURATION (Sprint B)
+// =============================================================================
+
+// 15 non-overlapping channels within the 433 MHz ISM sub-band.
+// Channel spacing = 300 kHz (wider than BW to prevent spectral overlap).
+#define FHSS_NUM_CHANNELS      15
+#define FHSS_CHANNEL_SPACING    0.3   // MHz between channel centers
+
+// The static channel table. Each entry = base + (index * spacing).
+static const float FHSS_CHANNEL_TABLE[FHSS_NUM_CHANNELS] = {
+    433.050, 433.350, 433.650, 433.950, 434.250,
+    434.550, 434.850, 435.150, 435.450, 435.750,
+    436.050, 436.350, 436.650, 436.950, 437.250
+};
+
+// Rendezvous channel: all nodes listen here before joining the mesh.
+// This is always Channel 0 — the "common ground" for key exchange.
+#define FHSS_RENDEZVOUS_CHANNEL_IDX  0
+
+// Dwell time per channel (ms). Must exceed max ToA + processing.
+// With SF7/250kHz, ToA ~= 5ms. We allow 50ms dwell for safety.
+#define FHSS_DWELL_TIME_MS     50
+
+// Extended preamble length for sync strobe (mesh-join broadcast).
+// 37 symbols guarantees intersection with a receiver scanning 15
+// channels at ~1.174ms CAD intervals (37 > 15 * 2.4 = 36 symbols).
+#define FHSS_SYNC_PREAMBLE_LEN 37
+
+// Standard preamble for normal data packets.
+#define FHSS_NORMAL_PREAMBLE_LEN 8
+
+// CAD scan interval per channel: ~1.174ms at SF7.
+// This is set by the SX1278 hardware — we just need to call scanChannel().
+
+// Hopping schedule state
+static uint8_t  fhssHopSequence[FHSS_NUM_CHANNELS]; // Permuted channel indices
+static uint8_t  fhssCurrentSlot  = 0;                // Current position in hop sequence
+static uint32_t fhssLastHopMs    = 0;                // Timestamp of last hop
+static bool     fhssSynchronized = false;             // True after first packet exchange
+
+// CSPRNG context dedicated to FHSS (seeded from AES_KEY)
+static mbedtls_ctr_drbg_context fhss_ctr_drbg;
+static mbedtls_entropy_context  fhss_entropy;
+static bool fhssCsprngSeeded = false;
 
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
@@ -127,7 +177,18 @@ AceButton btnUp(BTN_UP_PIN);
 AceButton btnDown(BTN_DOWN_PIN);
 AceButton btnSel(BTN_SEL_PIN);
 
-volatile bool rxFlag = false;
+volatile bool rxFlag    = false;
+volatile bool cadDoneFlag = false;
+volatile bool cadDetectedFlag = false;
+
+// Radio state machine for dynamic DIO mapping
+enum RadioState {
+    RADIO_STATE_RX,          // Normal receive mode (DIO0 = RXDone)
+    RADIO_STATE_CAD_SWEEP,   // CAD scanning mode (DIO0 = CADDone, DIO1 = CADDetected)
+    RADIO_STATE_TX,          // Transmitting
+    RADIO_STATE_STANDBY      // Idle
+};
+static volatile RadioState radioState = RADIO_STATE_STANDBY;
 
 enum MenuState { MENU_MAIN, MENU_INBOX, MENU_COMPOSE };
 static MenuState   currentMenu = MENU_MAIN;
@@ -302,11 +363,142 @@ static void handleBridgeSerialLine(char* line) {
 }
 
 // =============================================================================
-// CORE 0: RADIO TASK
+// FHSS HELPERS (Sprint B)
 // =============================================================================
+
+// Fisher-Yates shuffle seeded by CSPRNG to generate hop sequence.
+static void fhssGenerateHopSequence() {
+    // Initialize identity permutation
+    for (uint8_t i = 0; i < FHSS_NUM_CHANNELS; i++) {
+        fhssHopSequence[i] = i;
+    }
+    // Shuffle using CSPRNG bytes
+    uint8_t rngBuf[FHSS_NUM_CHANNELS];
+    mbedtls_ctr_drbg_random(&fhss_ctr_drbg, rngBuf, FHSS_NUM_CHANNELS);
+    for (int i = FHSS_NUM_CHANNELS - 1; i > 0; i--) {
+        uint8_t j = rngBuf[i] % (i + 1);
+        uint8_t tmp = fhssHopSequence[i];
+        fhssHopSequence[i] = fhssHopSequence[j];
+        fhssHopSequence[j] = tmp;
+    }
+    fhssCurrentSlot = 0;
+    DEBUG_PRINTLN("[FHSS] Hop sequence generated from AES-256 seed.");
+}
+
+// Seed the FHSS CSPRNG from the derived AES-256 key.
+// Called once after ECDH key exchange completes.
+static void fhssSeedFromAESKey() {
+    if (fhssCsprngSeeded) return;
+    mbedtls_ctr_drbg_init(&fhss_ctr_drbg);
+    mbedtls_entropy_init(&fhss_entropy);
+    // Use the shared AES_KEY as the personalization string (deterministic seed).
+    // Both nodes sharing the same AES_KEY will produce identical hop sequences.
+    mbedtls_ctr_drbg_seed(&fhss_ctr_drbg, mbedtls_entropy_func, &fhss_entropy,
+                          AES_KEY, 32);
+    fhssCsprngSeeded = true;
+    fhssGenerateHopSequence();
+    DEBUG_PRINTLN("[FHSS] CSPRNG seeded from AES-256 shared secret.");
+}
+
+// Advance to the next channel in the hop sequence.
+static float fhssAdvanceChannel() {
+    fhssCurrentSlot = (fhssCurrentSlot + 1) % FHSS_NUM_CHANNELS;
+    // When we wrap around, regenerate the sequence for the next epoch
+    if (fhssCurrentSlot == 0) {
+        fhssGenerateHopSequence();
+    }
+    float freq = FHSS_CHANNEL_TABLE[fhssHopSequence[fhssCurrentSlot]];
+    fhssLastHopMs = millis();
+    return freq;
+}
+
+// Get the current channel frequency.
+static float fhssCurrentFrequency() {
+    if (!fhssSynchronized) {
+        return FHSS_CHANNEL_TABLE[FHSS_RENDEZVOUS_CHANNEL_IDX];
+    }
+    return FHSS_CHANNEL_TABLE[fhssHopSequence[fhssCurrentSlot]];
+}
+
+// =============================================================================
+// CORE 0: RADIO TASK — Dynamic DIO Mapping (Sprint B)
+// =============================================================================
+
+// ISR for DIO0: fires on RXDone (in RX mode) or CADDone (in CAD mode)
 #if !SIMULATOR_MODE
-void IRAM_ATTR onDio0Rise() { rxFlag = true; }
+void IRAM_ATTR onDio0Rise() {
+    if (radioState == RADIO_STATE_CAD_SWEEP) {
+        cadDoneFlag = true;
+    } else {
+        rxFlag = true;
+    }
+}
+
+// ISR for DIO1: fires on CADDetected (activity found on channel)
+void IRAM_ATTR onDio1Rise() {
+    cadDetectedFlag = true;
+}
 #endif
+
+// Reconfigure DIO mapping for RX mode: DIO0 = RXDone
+static void configureDioForRx() {
+    radioState = RADIO_STATE_RX;
+    // RadioLib's startReceive() automatically maps DIO0 to RXDone
+}
+
+// Reconfigure DIO mapping for CAD mode: DIO0 = CADDone, DIO1 = CADDetected
+static void configureDioForCad() {
+    radioState = RADIO_STATE_CAD_SWEEP;
+    cadDoneFlag = false;
+    cadDetectedFlag = false;
+    // RadioLib's startChannelScan() automatically maps DIO0→CADDone, DIO1→CADDetected
+}
+
+// Perform a synchronous CAD sweep across all FHSS channels.
+// Returns the channel index where activity was detected, or -1 if none.
+static int fhssCadSweep(SX1278& radio) {
+    for (uint8_t ch = 0; ch < FHSS_NUM_CHANNELS; ch++) {
+        radio.standby();
+        radio.setFrequency(FHSS_CHANNEL_TABLE[ch]);
+
+        configureDioForCad();
+        cadDoneFlag = false;
+        cadDetectedFlag = false;
+
+        // startChannelScan triggers CAD; DIO0 fires when CAD completes
+        radio.startChannelScan();
+
+        // Wait for CAD to complete (~1.174ms at SF7)
+        uint32_t cadStart = millis();
+        while (!cadDoneFlag && (millis() - cadStart < 10)) {
+            // Tight spin — CAD is sub-2ms, so this is safe
+            delayMicroseconds(100);
+        }
+
+        if (cadDetectedFlag) {
+            DEBUG_PRINTF("[FHSS] CAD detected activity on channel %u (%.3f MHz)\n",
+                         ch, FHSS_CHANNEL_TABLE[ch]);
+            return (int)ch;
+        }
+    }
+    return -1; // No activity found
+}
+
+// Transmit a sync strobe on the rendezvous channel with extended preamble.
+// This allows scanning receivers to intersect the broadcast regardless of
+// which channel they are currently scanning.
+static void fhssTransmitSyncStrobe(SX1278& radio, const uint8_t* pktData, size_t pktLen) {
+    radio.standby();
+    radio.setFrequency(FHSS_CHANNEL_TABLE[FHSS_RENDEZVOUS_CHANNEL_IDX]);
+    radio.setPreambleLength(FHSS_SYNC_PREAMBLE_LEN);
+
+    radioState = RADIO_STATE_TX;
+    radio.transmit(const_cast<uint8_t*>(pktData), pktLen);
+
+    // Restore normal preamble length after strobe
+    radio.setPreambleLength(FHSS_NORMAL_PREAMBLE_LEN);
+    DEBUG_PRINTLN("[FHSS] Sync strobe transmitted on rendezvous channel.");
+}
 
 void taskRadioAndCrypto(void* pvParameters) {
     DEBUG_PRINTF("[Radio] Task started on Core %d\n", xPortGetCoreID());
@@ -316,7 +508,14 @@ void taskRadioAndCrypto(void* pvParameters) {
     MessageEvent outMsg, inMsg;
 
 #if !SIMULATOR_MODE
-    state = radio.begin(LORA_FREQUENCY, LORA_BANDWIDTH, LORA_SF, LORA_CR, LORA_SYNC_WORD, LORA_TX_POWER);
+    float initFreq = LORA_BASE_FREQUENCY;
+#if ENABLE_FHSS
+    // Start on the rendezvous channel for key exchange
+    initFreq = FHSS_CHANNEL_TABLE[FHSS_RENDEZVOUS_CHANNEL_IDX];
+    DEBUG_PRINTF("[FHSS] Starting on rendezvous channel: %.3f MHz\n", initFreq);
+#endif
+
+    state = radio.begin(initFreq, LORA_BANDWIDTH, LORA_SF, LORA_CR, LORA_SYNC_WORD, LORA_TX_POWER);
     if (state != RADIOLIB_ERR_NONE) {
         MessageEvent errMsg;
         errMsg.messageID = 0xFF;
@@ -324,22 +523,85 @@ void taskRadioAndCrypto(void* pvParameters) {
         xQueueSend(rxQueue, &errMsg, portMAX_DELAY);
         vTaskSuspend(NULL);
     }
+
+    // Attach DIO interrupts — both DIO0 and DIO1 for FHSS CAD support
     attachInterrupt(digitalPinToInterrupt(LORA_DIO0_PIN), onDio0Rise, RISING);
+#if ENABLE_FHSS
+    if (LORA_DIO1_PIN != RADIOLIB_NC) {
+        attachInterrupt(digitalPinToInterrupt(LORA_DIO1_PIN), onDio1Rise, RISING);
+    }
+    radio.setPreambleLength(FHSS_NORMAL_PREAMBLE_LEN);
+#endif
+
+    configureDioForRx();
     radio.startReceive();
     DEBUG_PRINTLN("[Radio] LoRa initialised OK.");
 #endif
 
     for (;;) {
+        // =====================================================================
+        // FHSS: Channel hopping & CAD sweep (Sprint B)
+        // =====================================================================
+#if ENABLE_FHSS && !SIMULATOR_MODE
+        if (fhssSynchronized) {
+            // Check if dwell time has expired — time to hop
+            if (millis() - fhssLastHopMs >= FHSS_DWELL_TIME_MS) {
+                float nextFreq = fhssAdvanceChannel();
+                radio.standby();
+                radio.setFrequency(nextFreq);
+                configureDioForRx();
+                rxFlag = false;
+                radio.startReceive();
+            }
+        } else if (keyExchangeComplete && fhssCsprngSeeded) {
+            // Post-key-exchange: perform CAD sweep to find the peer's channel
+            int activeChannel = fhssCadSweep(radio);
+            if (activeChannel >= 0) {
+                // Found activity — lock onto that channel to receive
+                radio.standby();
+                radio.setFrequency(FHSS_CHANNEL_TABLE[activeChannel]);
+                configureDioForRx();
+                rxFlag = false;
+                radio.startReceive();
+
+                // Try to receive the packet on this channel
+                uint32_t rxWaitStart = millis();
+                while (!rxFlag && (millis() - rxWaitStart < 20)) {
+                    delayMicroseconds(500);
+                }
+                // If we got a packet, the normal RX handler below will process it
+            } else {
+                // No activity found — go back to rendezvous and listen
+                radio.standby();
+                radio.setFrequency(FHSS_CHANNEL_TABLE[FHSS_RENDEZVOUS_CHANNEL_IDX]);
+                configureDioForRx();
+                rxFlag = false;
+                radio.startReceive();
+            }
+        }
+#endif
+
+        // =====================================================================
+        // TX: Transmit queued messages
+        // =====================================================================
         if (xQueueReceive(txQueue, &outMsg, 0) == pdPASS) {
             if (outMsg.messageID == 0xFE) {
+                // ECDH Key Exchange — always broadcast on rendezvous channel
+                // with extended sync strobe preamble for guaranteed reception
                 LoRaKeyExchangePacket keyPkt;
                 keyPkt.magicByte = 0xAC;
                 keyPkt.pubKeyLen = pubKeyLen;
                 memcpy(keyPkt.publicKey, myPublicKey, pubKeyLen);
                 
+#if ENABLE_FHSS && !SIMULATOR_MODE
+                // Use sync strobe for key exchange (mesh-join broadcast)
+                fhssTransmitSyncStrobe(radio, (uint8_t*)&keyPkt, sizeof(LoRaKeyExchangePacket));
+#else
                 radio.standby();
                 state = radio.transmit((uint8_t*)&keyPkt, sizeof(LoRaKeyExchangePacket));
+#endif
                 rxFlag = false;
+                configureDioForRx();
                 radio.startReceive();
                 continue;
             }
@@ -364,13 +626,22 @@ void taskRadioAndCrypto(void* pvParameters) {
 
 #if !SIMULATOR_MODE
             radio.standby();
+#if ENABLE_FHSS
+            // Transmit on current hop channel
+            radio.setFrequency(fhssCurrentFrequency());
+#endif
             size_t pktSize = sizeof(LoRaPacket) - MAX_PAYLOAD_LEN + cLen;
+            radioState = RADIO_STATE_TX;
             state = radio.transmit((uint8_t*)&pkt, pktSize);
             rxFlag = false;
+            configureDioForRx();
             radio.startReceive();
 #endif
         }
 
+        // =====================================================================
+        // RX: Process received packets
+        // =====================================================================
 #if !SIMULATOR_MODE
         if (rxFlag) {
             rxFlag = false;
@@ -379,8 +650,18 @@ void taskRadioAndCrypto(void* pvParameters) {
             
             if (radio.readData(buf, rxLen) == RADIOLIB_ERR_NONE) {
                 if (buf[0] == 0xAC) {
+                    // Key Exchange packet received
                     LoRaKeyExchangePacket* rxKeyPkt = (LoRaKeyExchangePacket*)buf;
                     deriveSharedAESKey(rxKeyPkt->publicKey, rxKeyPkt->pubKeyLen);
+
+#if ENABLE_FHSS
+                    // Seed FHSS CSPRNG now that we have the shared AES key
+                    fhssSeedFromAESKey();
+                    fhssSynchronized = true;
+                    fhssLastHopMs = millis();
+                    DEBUG_PRINTLN("[FHSS] Synchronized. Beginning channel hopping.");
+#endif
+
                     memset(&inMsg, 0, sizeof(inMsg));
                     inMsg.messageID = 0xFD; 
                     strncpy(inMsg.payload, "SYS: Secure Key Exchanged!", MAX_PAYLOAD_LEN);
@@ -395,6 +676,14 @@ void taskRadioAndCrypto(void* pvParameters) {
                     
                     bool authOk = aes256Decrypt(rxPkt->encrypted, rxPkt->payloadLen, rxPkt->iv, rxPkt->tag, inMsg.payload);
                     if (authOk) {
+#if ENABLE_FHSS
+                        // Successful decryption confirms synchronization
+                        if (!fhssSynchronized && fhssCsprngSeeded) {
+                            fhssSynchronized = true;
+                            fhssLastHopMs = millis();
+                            DEBUG_PRINTLN("[FHSS] Synchronized via data packet reception.");
+                        }
+#endif
                         xQueueSend(rxQueue, &inMsg, 0);
 #if C2_BRIDGE_MODE
                         char escapedPayload[MAX_PAYLOAD_LEN * 2];
@@ -411,13 +700,19 @@ void taskRadioAndCrypto(void* pvParameters) {
                             (unsigned long)(millis() / 1000)
                         );
 #endif
+                        // Mesh relay with random backoff
                         if (rxPkt->hopCount > 0) {
                             rxPkt->hopCount--;
                             radio.standby();
                             vTaskDelay((esp_random() % 200 + 50) / portTICK_PERIOD_MS);
+#if ENABLE_FHSS
+                            radio.setFrequency(fhssCurrentFrequency());
+#endif
                             size_t relaySize = sizeof(LoRaPacket) - MAX_PAYLOAD_LEN + rxPkt->payloadLen;
+                            radioState = RADIO_STATE_TX;
                             radio.transmit(buf, relaySize);
                             rxFlag = false;
+                            configureDioForRx();
                             radio.startReceive();
                         }
                     }
