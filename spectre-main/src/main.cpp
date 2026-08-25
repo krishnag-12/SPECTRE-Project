@@ -1,19 +1,22 @@
 // =============================================================================
 // S.P.E.C.T.R.E. - Secure Portable Encrypted Communication Terminal
 //                  for Remote Environments
+// Sprint A: C2 Gateway Integration
 // Sprint B: Cryptographic FHSS & The Rendezvous Problem
+// Sprint C: Delay-Tolerant Networking (DTN)
 // =============================================================================
 
 #define SIMULATOR_MODE 0
 #define ENABLE_RADIO_TASK 1
 #define C2_BRIDGE_MODE 0
 #define ENABLE_FHSS 1
+#define ENABLE_DTN 1
 #define NODE_ID "Alpha-1"
 
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h> 
+#include <Adafruit_SSD1306.h>
 #include <AceButton.h>
 
 // Cryptography Libraries
@@ -29,10 +32,45 @@
   #include <RadioLib.h>
 #endif
 
+// DTN: Non-Volatile Storage for Store-Carry-Forward (Sprint C)
+#if ENABLE_DTN
+  #include <SPIFFS.h>
+#endif
+
 using namespace ace_button;
 
 // =============================================================================
-// PIN DEFINITIONS
+// HARDWARE PIN WIRING REFERENCE (ESP32-WROOM-32 DevKit)
+// =============================================================================
+//
+//  ESP32 GPIO  │  Connected To          │  Function
+// ─────────────┼────────────────────────┼──────────────────────────
+//  GPIO  5     │  SX1278 NSS  (CS)      │  SPI Chip Select (LoRa)
+//  GPIO 14     │  SX1278 RST  (Reset)   │  LoRa Hardware Reset
+//  GPIO 26     │  SX1278 DIO0           │  RXDone / CADDone IRQ
+//  GPIO 35     │  SX1278 DIO1           │  CADDetected IRQ (FHSS)
+//  GPIO 18     │  SX1278 SCK  (SPI CLK) │  SPI Clock (default VSPI)
+//  GPIO 23     │  SX1278 MOSI (SPI DI)  │  SPI Master Out
+//  GPIO 19     │  SX1278 MISO (SPI DO)  │  SPI Master In
+//  GPIO 21     │  SSD1306 SDA (I2C)     │  OLED Data
+//  GPIO 22     │  SSD1306 SCL (I2C)     │  OLED Clock
+//  GPIO 32     │  Tactile Button (UP)   │  Pull-up, active LOW
+//  GPIO 33     │  Tactile Button (DOWN) │  Pull-up, active LOW
+//  GPIO 25     │  Tactile Button (SEL)  │  Pull-up, active LOW
+//  3V3         │  SX1278 VCC, SSD1306   │  Power rail
+//  GND         │  Common ground         │  Ground rail
+// ─────────────┴────────────────────────┴──────────────────────────
+//
+//  Notes:
+//  - GPIO 35 is input-only (no internal pull-up). Use external
+//    10kΩ pull-down if DIO1 floats when FHSS is disabled.
+//  - SPI pins 18/19/23 are ESP32 default VSPI and do NOT need
+//    explicit #define — the RadioLib SX1278 constructor uses them.
+//  - I2C address for SSD1306: 0x3C (hardcoded in setup()).
+// =============================================================================
+
+// =============================================================================
+// RADIO CONFIGURATION
 // =============================================================================
 
 // Base frequency (Channel 0). FHSS hops across a pool offset from this.
@@ -53,12 +91,10 @@ using namespace ace_button;
 // Max hardware power output (17 dBm for SX1278)
 #define LORA_TX_POWER    17
 
-#define LORA_NSS_PIN     5
-#define LORA_DIO0_PIN    26
-#define LORA_RESET_PIN   14
-// DIO1 is required for CAD-Detected interrupt in FHSS mode.
-// Wire SX1278 DIO1 to ESP32 GPIO 35 (input-only pin, safe for ISR).
-#define LORA_DIO1_PIN    35
+#define LORA_NSS_PIN     5      // See wiring table above
+#define LORA_DIO0_PIN    26     // See wiring table above
+#define LORA_RESET_PIN   14     // See wiring table above
+#define LORA_DIO1_PIN    35     // See wiring table above (FHSS CAD)
 
 // =============================================================================
 // FHSS CHANNEL POOL & HOPPING CONFIGURATION (Sprint B)
@@ -110,9 +146,63 @@ static bool fhssCsprngSeeded = false;
 #define SCREEN_HEIGHT 64
 #define OLED_RESET   -1
 
-#define BTN_UP_PIN    32
-#define BTN_DOWN_PIN  33
-#define BTN_SEL_PIN   25
+#define BTN_UP_PIN    32       // See wiring table above
+#define BTN_DOWN_PIN  33       // See wiring table above
+#define BTN_SEL_PIN   25       // See wiring table above
+
+// =============================================================================
+// CORE MESSAGE / PACKET CONSTANTS
+// Defined early because the DTN structures (Sprint C) and the LoRaPacket
+// definition further below both reference NODE_ID_MAX_LEN. Keeping these above
+// the DTN configuration block avoids use-before-definition of the macro.
+// =============================================================================
+#define MAX_PAYLOAD_LEN   128
+#define QUEUE_DEPTH       5
+#define NODE_ID_MAX_LEN   16
+
+// =============================================================================
+// DTN: DELAY-TOLERANT NETWORKING CONFIGURATION (Sprint C)
+// =============================================================================
+
+#if ENABLE_DTN
+
+// Maximum number of packets that can be stored on flash.
+// Each stored packet is ~200 bytes. 32 packets ≈ 6.4 KB of SPIFFS.
+#define DTN_MAX_STORED_PACKETS    32
+
+// Maximum number of unique nodes tracked for presence detection.
+#define DTN_MAX_TRACKED_NODES     8
+
+// A node is considered "missing" if not heard from in this many ms.
+// 30 seconds — aggressive timeout for tactical mesh.
+#define DTN_NODE_TIMEOUT_MS       30000
+
+// Interval between data mule dump checks (ms).
+#define DTN_DUMP_INTERVAL_MS      5000
+
+// Stored DTN packets live at the SPIFFS root as "/dtn_XXXX.bin".
+// (SPIFFS is a flat filesystem, so no real subdirectory is used.)
+
+// On-flash packet header: stored before each raw LoRaPacket.
+struct __attribute__((packed)) DtnStoredHeader {
+    char     targetNodeId[NODE_ID_MAX_LEN]; // Who this packet is for
+    uint32_t storedAtMs;                    // millis() when stored
+    uint16_t packetLen;                     // Length of the LoRaPacket blob
+};
+
+// Node presence tracking entry.
+struct DtnNodePresence {
+    char     nodeId[NODE_ID_MAX_LEN];
+    uint32_t lastSeenMs;                    // millis() timestamp
+    bool     active;                        // Slot in use
+};
+
+static DtnNodePresence dtnNodeTable[DTN_MAX_TRACKED_NODES];
+static uint32_t dtnLastDumpCheckMs = 0;
+static uint16_t dtnNextFileId = 0;          // Auto-incrementing file ID
+static bool     dtnInitialized = false;
+
+#endif // ENABLE_DTN
 
 // =============================================================================
 // ECDH KEY EXCHANGE & AES CONFIG
@@ -128,9 +218,8 @@ mbedtls_ctr_drbg_context ctr_drbg;
 static uint8_t myPublicKey[65]; 
 size_t pubKeyLen;
 
-#define MAX_PAYLOAD_LEN   128
-#define QUEUE_DEPTH       5
-#define NODE_ID_MAX_LEN   16
+// (MAX_PAYLOAD_LEN / QUEUE_DEPTH / NODE_ID_MAX_LEN are defined earlier, above the
+//  DTN configuration block, so the Sprint C structures can reference them.)
 
 // =============================================================================
 // DATA STRUCTURES
@@ -421,6 +510,227 @@ static float fhssCurrentFrequency() {
 }
 
 // =============================================================================
+// DTN HELPERS — Store-Carry-Forward (Sprint C)
+// =============================================================================
+
+// DTN is inseparable from the radio: it detects node presence from received
+// frames and burst-transmits buffered packets. It therefore requires the
+// SX1278 driver, which is only compiled when !SIMULATOR_MODE. This guard
+// matches the DTN call sites (inside #if !SIMULATOR_MODE) and the periodic
+// dump trigger in the radio task (#if ENABLE_DTN && !SIMULATOR_MODE).
+#if ENABLE_DTN && !SIMULATOR_MODE
+
+// Forward declarations for symbols defined later in the file but referenced
+// by the DTN helpers below (avoids use-before-declaration compile errors).
+static void configureDioForRx();          // defined in the RADIO TASK section
+static int  dtnCountStoredPackets();      // defined below; used by dtnStorePacket
+
+// --- Portable SPIFFS filename helpers -------------------------------------
+// The arduino-esp32 core changed File::name() semantics across major versions:
+//   core 1.0.x  -> full path,  e.g. "/dtn_0001.bin"
+//   core 2.x/3.x-> basename only, e.g. "dtn_0001.bin"
+// These helpers normalise both so the DTN store works regardless of the
+// installed core version. All matching is done on the basename; all SPIFFS
+// operations (open/remove) use a leading-slash full path.
+static String dtnBaseName(const String& rawName) {
+    const int slash = rawName.lastIndexOf('/');
+    return (slash >= 0) ? rawName.substring(slash + 1) : rawName;
+}
+static bool dtnIsStoredFile(const String& rawName) {
+    const String base = dtnBaseName(rawName);
+    return base.startsWith("dtn_") && base.endsWith(".bin");
+}
+static String dtnFullPath(const String& rawName) {
+    return "/" + dtnBaseName(rawName);
+}
+static int dtnParseFileId(const String& rawName) {
+    const String base = dtnBaseName(rawName);        // "dtn_0001.bin"
+    return base.substring(4, base.length() - 4).toInt();  // strip "dtn_" and ".bin"
+}
+
+// Initialize the SPIFFS filesystem for DTN storage.
+static bool dtnInitStorage() {
+    if (dtnInitialized) return true;
+    if (!SPIFFS.begin(true)) { // true = format on first mount
+        DEBUG_PRINTLN("[DTN] FATAL: SPIFFS mount failed!");
+        return false;
+    }
+    // Clear the node presence table
+    memset(dtnNodeTable, 0, sizeof(dtnNodeTable));
+    // Scan existing DTN files to find the highest file ID
+    File root = SPIFFS.open("/");
+    if (root && root.isDirectory()) {
+        File f = root.openNextFile();
+        while (f) {
+            String name = String(f.name());
+            // Files are named dtn_XXXX.bin (see dtn* filename helpers above)
+            if (dtnIsStoredFile(name)) {
+                int id = dtnParseFileId(name);
+                if (id >= dtnNextFileId) dtnNextFileId = id + 1;
+            }
+            f = root.openNextFile();
+        }
+    }
+    dtnInitialized = true;
+    DEBUG_PRINTF("[DTN] SPIFFS mounted. Next file ID: %u. Free: %u bytes.\n",
+                 dtnNextFileId, SPIFFS.totalBytes() - SPIFFS.usedBytes());
+    return true;
+}
+
+// Update node presence table when we hear from a node.
+static void dtnUpdateNodePresence(const char* nodeId) {
+    // Search for existing entry
+    int freeSlot = -1;
+    for (int i = 0; i < DTN_MAX_TRACKED_NODES; i++) {
+        if (dtnNodeTable[i].active && strncmp(dtnNodeTable[i].nodeId, nodeId, NODE_ID_MAX_LEN) == 0) {
+            dtnNodeTable[i].lastSeenMs = millis();
+            return;
+        }
+        if (!dtnNodeTable[i].active && freeSlot < 0) freeSlot = i;
+    }
+    // New node — use free slot or evict oldest
+    if (freeSlot < 0) {
+        uint32_t oldest = UINT32_MAX;
+        for (int i = 0; i < DTN_MAX_TRACKED_NODES; i++) {
+            if (dtnNodeTable[i].lastSeenMs < oldest) {
+                oldest = dtnNodeTable[i].lastSeenMs;
+                freeSlot = i;
+            }
+        }
+    }
+    if (freeSlot >= 0) {
+        strncpy(dtnNodeTable[freeSlot].nodeId, nodeId, NODE_ID_MAX_LEN - 1);
+        dtnNodeTable[freeSlot].nodeId[NODE_ID_MAX_LEN - 1] = '\0';
+        dtnNodeTable[freeSlot].lastSeenMs = millis();
+        dtnNodeTable[freeSlot].active = true;
+        DEBUG_PRINTF("[DTN] Tracking new node: %s\n", nodeId);
+    }
+}
+
+// Check if a node is currently reachable (heard from recently).
+static bool dtnIsNodeReachable(const char* nodeId) {
+    uint32_t now = millis();
+    for (int i = 0; i < DTN_MAX_TRACKED_NODES; i++) {
+        if (dtnNodeTable[i].active &&
+            strncmp(dtnNodeTable[i].nodeId, nodeId, NODE_ID_MAX_LEN) == 0) {
+            return (now - dtnNodeTable[i].lastSeenMs) < DTN_NODE_TIMEOUT_MS;
+        }
+    }
+    return false; // Never seen = unreachable
+}
+
+// Store an encrypted LoRa packet to SPIFFS for later delivery.
+static bool dtnStorePacket(const char* targetNodeId, const uint8_t* pktData, uint16_t pktLen) {
+    if (!dtnInitialized) return false;
+
+    // Enforce the logical packet cap so flash usage stays bounded even while
+    // plenty of raw bytes remain free.
+    if (dtnCountStoredPackets() >= DTN_MAX_STORED_PACKETS) {
+        DEBUG_PRINTLN("[DTN] Packet store at capacity (DTN_MAX_STORED_PACKETS) — cannot store.");
+        return false;
+    }
+
+    // Check raw storage limits (with a safety margin for SPIFFS metadata).
+    uint32_t freeBytes = SPIFFS.totalBytes() - SPIFFS.usedBytes();
+    if (freeBytes < (sizeof(DtnStoredHeader) + pktLen + 512)) { // 512B safety margin
+        DEBUG_PRINTLN("[DTN] SPIFFS full — cannot store packet.");
+        return false;
+    }
+
+    char filename[24];
+    snprintf(filename, sizeof(filename), "/dtn_%04u.bin", dtnNextFileId++);
+
+    File f = SPIFFS.open(filename, FILE_WRITE);
+    if (!f) {
+        DEBUG_PRINTF("[DTN] Failed to open %s for writing.\n", filename);
+        return false;
+    }
+
+    DtnStoredHeader hdr;
+    memset(&hdr, 0, sizeof(hdr));
+    strncpy(hdr.targetNodeId, targetNodeId, NODE_ID_MAX_LEN - 1);
+    hdr.storedAtMs = millis();
+    hdr.packetLen  = pktLen;
+
+    f.write((uint8_t*)&hdr, sizeof(hdr));
+    f.write(pktData, pktLen);
+    f.close();
+
+    DEBUG_PRINTF("[DTN] Stored packet for '%s' as %s (%u bytes).\n",
+                 targetNodeId, filename, pktLen);
+    return true;
+}
+
+// Data Mule Dump: check for stored packets whose target node has returned.
+// Called periodically from the radio task. Transmits ONE packet per call
+// to avoid monopolizing the radio channel.
+static bool dtnDumpOnePacket(SX1278& radio) {
+    File root = SPIFFS.open("/");
+    if (!root || !root.isDirectory()) return false;
+
+    File f = root.openNextFile();
+    while (f) {
+        String name = String(f.name());
+        if (dtnIsStoredFile(name)) {
+            // Read the header to check the target
+            DtnStoredHeader hdr;
+            if (f.read((uint8_t*)&hdr, sizeof(hdr)) == sizeof(hdr)) {
+                if (dtnIsNodeReachable(hdr.targetNodeId)) {
+                    // Target node is back! Read and transmit the stored packet.
+                    // Guard against a corrupt/oversized header before reading
+                    // into a fixed-size stack buffer.
+                    if (hdr.packetLen > sizeof(LoRaPacket)) {
+                        f.close();
+                        SPIFFS.remove(dtnFullPath(name)); // drop poison packet
+                        return true;
+                    }
+                    uint8_t pktBuf[sizeof(LoRaPacket)];
+                    uint16_t readLen = f.read(pktBuf, hdr.packetLen);
+                    f.close();
+
+                    if (readLen == hdr.packetLen) {
+                        radio.standby();
+#if ENABLE_FHSS
+                        radio.setFrequency(fhssCurrentFrequency());
+#endif
+                        radioState = RADIO_STATE_TX;
+                        radio.transmit(pktBuf, readLen);
+                        rxFlag = false;
+                        configureDioForRx();
+                        radio.startReceive();
+
+                        DEBUG_PRINTF("[DTN] MULE DUMP: Delivered stored packet to '%s' from %s.\n",
+                                     hdr.targetNodeId, name.c_str());
+                    }
+
+                    // Delete the file after delivery attempt
+                    SPIFFS.remove(dtnFullPath(name));
+                    return true; // One packet per call
+                }
+            }
+        }
+        f = root.openNextFile();
+    }
+    return false; // No packets to deliver
+}
+
+// Count how many DTN packets are currently stored on flash.
+static int dtnCountStoredPackets() {
+    int count = 0;
+    File root = SPIFFS.open("/");
+    if (!root || !root.isDirectory()) return 0;
+    File f = root.openNextFile();
+    while (f) {
+        String name = String(f.name());
+        if (dtnIsStoredFile(name)) count++;
+        f = root.openNextFile();
+    }
+    return count;
+}
+
+#endif // ENABLE_DTN && !SIMULATOR_MODE
+
+// =============================================================================
 // CORE 0: RADIO TASK — Dynamic DIO Mapping (Sprint B)
 // =============================================================================
 
@@ -684,6 +994,13 @@ void taskRadioAndCrypto(void* pvParameters) {
                             DEBUG_PRINTLN("[FHSS] Synchronized via data packet reception.");
                         }
 #endif
+
+#if ENABLE_DTN
+                        // DTN: Update node presence — this node is alive
+                        const char* senderNodeId = rxPkt->nodeId[0] != '\0' ? rxPkt->nodeId : "Unknown-0";
+                        dtnUpdateNodePresence(senderNodeId);
+#endif
+
                         xQueueSend(rxQueue, &inMsg, 0);
 #if C2_BRIDGE_MODE
                         char escapedPayload[MAX_PAYLOAD_LEN * 2];
@@ -714,12 +1031,48 @@ void taskRadioAndCrypto(void* pvParameters) {
                             rxFlag = false;
                             configureDioForRx();
                             radio.startReceive();
+                        } else {
+#if ENABLE_DTN
+                            // Hop count exhausted — store for later delivery if
+                            // intended destination is not currently reachable.
+                            // Extract destination from payload if it contains a
+                            // target node hint (e.g. "CMD:PING:Bravo-2").
+                            // Otherwise, store generically for any missing node.
+                            const char* destNode = rxPkt->nodeId; // originator
+                            if (strncmp(inMsg.payload, "CMD:", 4) == 0) {
+                                // Extract target from CMD:TYPE:TARGET format
+                                char tmpBuf[MAX_PAYLOAD_LEN];
+                                strncpy(tmpBuf, inMsg.payload, MAX_PAYLOAD_LEN);
+                                char* sv = nullptr;
+                                strtok_r(tmpBuf, ":", &sv); // CMD
+                                strtok_r(nullptr, ":", &sv); // TYPE
+                                char* target = strtok_r(nullptr, ":", &sv);
+                                if (target && strlen(target) > 0) destNode = target;
+                            }
+                            if (!dtnIsNodeReachable(destNode)) {
+                                size_t storeSize = sizeof(LoRaPacket) - MAX_PAYLOAD_LEN + rxPkt->payloadLen;
+                                dtnStorePacket(destNode, buf, (uint16_t)storeSize);
+                            }
+#endif
                         }
                     }
                 }
             }
         }
 #endif
+
+        // =====================================================================
+        // DTN: Data Mule Dump — deliver stored packets (Sprint C)
+        // =====================================================================
+#if ENABLE_DTN && !SIMULATOR_MODE
+        if (dtnInitialized && keyExchangeComplete) {
+            if (millis() - dtnLastDumpCheckMs >= DTN_DUMP_INTERVAL_MS) {
+                dtnLastDumpCheckMs = millis();
+                dtnDumpOnePacket(radio);
+            }
+        }
+#endif
+
         vTaskDelay(20 / portTICK_PERIOD_MS);
     }
 }
@@ -855,6 +1208,11 @@ void setup() {
 #endif
 
     initCryptoAndGenerateKeys();
+
+#if ENABLE_DTN && !SIMULATOR_MODE
+    DEBUG_PRINTLN("[Setup] Initializing DTN store (SPIFFS)...");
+    dtnInitStorage();
+#endif
 
     txQueue = xQueueCreate(QUEUE_DEPTH, sizeof(MessageEvent));
     rxQueue = xQueueCreate(QUEUE_DEPTH, sizeof(MessageEvent));

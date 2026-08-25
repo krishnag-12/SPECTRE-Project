@@ -52,12 +52,14 @@ Based on an architectural review of the `spectre-main` and `spectre-dashboard` d
 - [x] **Channel Pool:** 15 non-overlapping channels (433.050–437.250 MHz, 300 kHz spacing) with rendezvous channel (Ch 0) for pre-key-exchange operation.
 - [x] **Compile-time toggle:** `#define ENABLE_FHSS 1` — set to 0 to disable FHSS and revert to static single-channel operation.
 
-### Sprint C: Delay-Tolerant Networking (DTN)
+### Sprint C: Delay-Tolerant Networking (DTN) — ✅ COMPLETE
 
 #### [MODIFY] `spectre-main/src/main.cpp`
-- **Non-Volatile Storage:** Initialize `SPIFFS` or `LittleFS` on the ESP32.
-- **Store-Carry-Forward:** Modify the routing logic so that if a packet's destination node is unreachable, the encrypted payload is written to flash memory.
-- **Data Mule Dump:** Implement a background task that detects when a missing node returns to the mesh and autonomously bursts the stored packets from flash.
+- [x] **Non-Volatile Storage:** Initialize `SPIFFS` on the ESP32 via `dtnInitStorage()` (format-on-first-mount). On boot it rescans the flash root for existing `dtn_XXXX.bin` files and resumes the auto-incrementing file-ID sequence so buffered packets survive a reboot.
+- [x] **Store-Carry-Forward:** When a packet exhausts its hop budget without reaching a reachable destination, `dtnStorePacket()` writes a `DtnStoredHeader` (target node ID, `millis()` timestamp, length) followed by the raw encrypted `LoRaPacket` blob to `/dtn_XXXX.bin`. Node reachability is tracked in an 8-slot presence table (`dtnUpdateNodePresence`/`dtnIsNodeReachable`) with a 30 s timeout (`DTN_NODE_TIMEOUT_MS`) and oldest-node eviction. Storage is bounded by a 32-packet logical cap (`DTN_MAX_STORED_PACKETS`) plus a raw SPIFFS free-space guard.
+- [x] **Data Mule Dump:** The Core 0 radio task calls `dtnDumpOnePacket()` every `DTN_DUMP_INTERVAL_MS` (5 s). When a stored packet's target reappears in the mesh, it is burst-transmitted (one packet per call, to respect channel fairness / duty cycle and FHSS hopping) and the file is deleted. Corrupt/oversized headers are dropped safely rather than read into the stack buffer.
+- [x] **Cross-core-version portability:** `dtnBaseName`/`dtnIsStoredFile`/`dtnFullPath`/`dtnParseFileId` normalize the differing `File::name()` semantics between arduino-esp32 core 1.0.x (full path) and 2.x/3.x (basename), so the store works regardless of the installed core.
+- [x] **Compile-time toggle:** `#define ENABLE_DTN 1` — set to 0 to disable DTN and revert to drop-on-unreachable. DTN code is guarded `#if ENABLE_DTN && !SIMULATOR_MODE` since store-carry-forward requires the radio.
 
 ### Sprint D: Edge-AI Jamming Detection & Anti-Tamper
 

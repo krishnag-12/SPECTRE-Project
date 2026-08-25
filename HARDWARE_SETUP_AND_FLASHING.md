@@ -148,6 +148,13 @@ SPECTRE_MOCK=false npm run electron:dev
    - Base Station queues packet and returns ACK JSON:
      `{"kind":"ack","commandId":"...","nodeId":"Alpha-1","type":"PING","success":true,"outcomeCode":"ACKED","timestamp":...}`
    - Dashboard displays **COMMAND SUCCESS: ACKED**.
+7. **Delay-Tolerant Networking (DTN) — Store-Carry-Forward** (requires `#define ENABLE_DTN 1`, the default, on two field nodes, e.g. `Alpha-1` and `Bravo-2`):
+   - Confirm both field nodes have exchanged keys and can pass a normal message (steps 3–4).
+   - **Induce a partition**: Power off (or carry out of range) the destination node `Bravo-2`.
+   - **Transmit while unreachable**: On `Alpha-1`, address a `SITREP TX` to `Bravo-2`. Because `Bravo-2` has not been heard within `DTN_NODE_TIMEOUT_MS` (30 s), `Alpha-1` writes the *encrypted* packet to flash as `/dtn_XXXX.bin` rather than dropping it. The serial monitor shows a store log and the buffered count increments (bounded at `DTN_MAX_STORED_PACKETS` = 32).
+   - **Verify persistence (optional)**: Reboot `Alpha-1`. On boot, `dtnInitStorage()` rescans SPIFFS, so the buffered packet and its auto-incrementing file-ID sequence survive the power cycle.
+   - **Reconnect / data-mule dump**: Power `Bravo-2` back on (or bring it into range). Within `DTN_DUMP_INTERVAL_MS` (5 s) of `Alpha-1` next hearing a frame from `Bravo-2`, `Alpha-1` burst-transmits the buffered packet (one per dump cycle, to respect duty cycle and FHSS hopping) and deletes the flash copy.
+   - **Confirm delivery**: `Bravo-2` receives, decrypts, and displays the delayed SITREP; the buffered count on `Alpha-1` returns to zero. The payload was never decrypted while stored — COMSEC is preserved end-to-end.
 
 ---
 

@@ -13,9 +13,10 @@ By leveraging Long Range (LoRa) Chirp Spread Spectrum (CSS) modulation and a dua
 
 ## 🛡️ Core Tactical Features
 *   **Infrastructure Independence:** 100% off-grid deployment utilizing a deterministic, ad-hoc Store-and-Forward flood routing protocol. Bypasses physical line-of-sight constraints.
+*   **Delay-Tolerant Networking (DTN):** A Store-Carry-Forward layer persists encrypted payloads to non-volatile flash (SPIFFS) whenever a destination node is offline or out of range, then autonomously burst-delivers them ("data mule dump") the instant that node re-enters the mesh. This guarantees eventual delivery across intermittently-connected, partitioned tactical networks where no contemporaneous end-to-end path exists.
 *   **Zero-Trust Cryptography (COMSEC):** Executes dynamic Elliptic-Curve Diffie-Hellman (ECDH) key exchanges on the SECP256R1 curve. Payloads are authenticated and encrypted via AES-256-GCM to prevent traffic analysis, spoofing, and replay attacks.
+*   **Cryptographic FHSS (ECCM):** Frequency-Hopping Spread Spectrum across a 15-channel pool, with the hop schedule derived from the shared AES-256 secret via a CSPRNG. Combined with CSS modulation's processing gain, this resists narrowband jamming and enables successful demodulation below the thermal noise floor.
 *   **Low Probability of Detection (LPD):** Mathematical optimization of physical layer parameters (SF7, 250 kHz Bandwidth) compresses fully encrypted tactical payloads into sub-100-millisecond transmission bursts, severely degrading adversary Radio Direction Finding (RDF) capabilities.
-*   **Electronic Counter-Countermeasures (ECCM):** CSS modulation provides extreme processing gain, allowing successful payload demodulation even when signal strength drops below the thermal noise floor.
 
 ## ⚙️ System Architecture
 
@@ -31,6 +32,15 @@ By leveraging Long Range (LoRa) Chirp Spread Spectrum (CSS) modulation and a dua
 S.P.E.C.T.R.E. relies on a highly isolated **FreeRTOS** dual-core environment:
 *   **Core 0 (Background):** Dedicated to the radio state machine and the `mbedTLS` crypto library. Handles hardware interrupts (DIO0) and asynchronous AES/ECDH processing without blocking the UI.
 *   **Core 1 (Foreground):** Handles operator input matrix, situational awareness displays (OLED), and system telemetry.
+
+### Delay-Tolerant Networking (DTN) Subsystem
+In a contested environment, mesh partitions are the norm, not the exception — nodes move out of range, take cover, or go dark. Classic flood routing simply drops a packet when the next hop is unreachable. S.P.E.C.T.R.E.'s DTN layer instead applies a **Store-Carry-Forward** discipline so that a message is never silently lost:
+
+*   **Presence tracking:** Every received frame refreshes a node-presence table (default 8 tracked nodes). A node is considered reachable if heard from within `DTN_NODE_TIMEOUT_MS` (default 30 s); otherwise it is treated as missing.
+*   **Store:** When a packet exhausts its hop budget without reaching a reachable destination, the fully-encrypted `LoRaPacket` — ciphertext, IV, and GCM tag intact — is written to non-volatile flash (`SPIFFS`) as `/dtn_XXXX.bin`, preceded by a small header recording the target callsign, timestamp, and length. **Payloads are never decrypted to be stored; COMSEC is preserved end-to-end.** Buffering is bounded by a logical cap (`DTN_MAX_STORED_PACKETS`, default 32) and a raw free-space guard, and the file-ID sequence survives reboots.
+*   **Carry & Forward (Data Mule Dump):** The Core 0 radio task periodically (`DTN_DUMP_INTERVAL_MS`, default 5 s) checks whether any buffered packet's target has reappeared in the mesh. When it has, the packet is burst-transmitted and its flash copy deleted. Delivery is throttled to **one packet per cycle** to respect the LoRa duty cycle and interleave cleanly with FHSS channel hopping.
+
+The subsystem is gated by a single compile-time flag, `#define ENABLE_DTN 1` in `spectre-main/src/main.cpp` (set to `0` to revert to drop-on-unreachable behavior). Because Store-Carry-Forward is meaningless without a radio, the DTN code is compiled only when `ENABLE_DTN && !SIMULATOR_MODE`. Filename handling is normalized across arduino-esp32 core 1.0.x and 2.x/3.x, whose `File::name()` semantics differ.
 
 ## 🚀 Getting Started
 

@@ -17,7 +17,32 @@
 #define NODE_ID "Gateway-1" // Identifier for the dashboard's own node
 
 // =============================================================================
-// PIN DEFINITIONS
+// HARDWARE PIN WIRING REFERENCE (C2 Gateway — ESP32-WROOM-32 DevKit)
+// =============================================================================
+//
+//  ESP32 GPIO  │  Connected To          │  Function
+// ─────────────┼────────────────────────┼──────────────────────────
+//  GPIO  5     │  SX1278 NSS  (CS)      │  SPI Chip Select (LoRa)
+//  GPIO 14     │  SX1278 RST  (Reset)   │  LoRa Hardware Reset
+//  GPIO 26     │  SX1278 DIO0           │  RXDone IRQ
+//  GPIO 18     │  SX1278 SCK  (SPI CLK) │  SPI Clock (default VSPI)
+//  GPIO 23     │  SX1278 MOSI (SPI DI)  │  SPI Master Out
+//  GPIO 19     │  SX1278 MISO (SPI DO)  │  SPI Master In
+//  USB         │  PC / Dashboard Host   │  Serial 115200 (JSON stream)
+//  3V3         │  SX1278 VCC            │  Power rail
+//  GND         │  Common ground         │  Ground rail
+// ─────────────┴────────────────────────┴──────────────────────────
+//
+//  Notes:
+//  - No OLED or buttons — this is a headless gateway.
+//  - DIO1 is NOT connected (RADIOLIB_NC) — no FHSS on gateway.
+//  - SPI pins 18/19/23 are ESP32 default VSPI and are implicit.
+//  - The USB serial port must be connected to the host running
+//    spectre-dashboard for JSON telemetry bridging.
+// =============================================================================
+
+// =============================================================================
+// RADIO CONFIGURATION & PIN DEFINITIONS
 // =============================================================================
 
 #define LORA_FREQUENCY   433.0  
@@ -27,10 +52,10 @@
 #define LORA_SYNC_WORD   0x34   
 #define LORA_TX_POWER    17     
 
-#define LORA_NSS_PIN     5
-#define LORA_DIO0_PIN    26
-#define LORA_RESET_PIN   14
-#define LORA_DIO1_PIN    RADIOLIB_NC
+#define LORA_NSS_PIN     5      // See wiring table above
+#define LORA_DIO0_PIN    26     // See wiring table above
+#define LORA_RESET_PIN   14     // See wiring table above
+#define LORA_DIO1_PIN    RADIOLIB_NC  // Not wired on gateway (no FHSS)
 
 #define MAX_PAYLOAD_LEN   128
 #define QUEUE_DEPTH       10
