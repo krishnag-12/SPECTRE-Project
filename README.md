@@ -2,7 +2,7 @@
 **Secure Portable Encrypted Communication Terminal for Remote Environments**
 
 ![Status](https://img.shields.io/badge/Status-Active_R%26D-brightgreen)
-![Version](https://img.shields.io/badge/Version-1.0_Prototype-blue)
+![Version](https://img.shields.io/badge/Version-2.0_Prototype-blue)
 ![Platform](https://img.shields.io/badge/Hardware-ESP32-orange)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey)
 
@@ -42,6 +42,15 @@ In a contested environment, mesh partitions are the norm, not the exception — 
 
 The subsystem is gated by a single compile-time flag, `#define ENABLE_DTN 1` in `spectre-main/src/main.cpp` (set to `0` to revert to drop-on-unreachable behavior). Because Store-Carry-Forward is meaningless without a radio, the DTN code is compiled only when `ENABLE_DTN && !SIMULATOR_MODE`. Filename handling is normalized across arduino-esp32 core 1.0.x and 2.x/3.x, whose `File::name()` semantics differ.
 
+### OLED User Interface & Screensaver
+The 0.96" SSD1306 OLED display serves as the field operator's primary situational awareness interface. It features a branded boot sequence and an intelligent idle screensaver:
+
+*   **Boot Splash:** On power-up, a vector-drawn geometric S.P.E.C.T.R.E. logo (the "M" icon) with `SYSTEM ONLINE` and `v2.0 [SECURED]` is displayed for 2.5 seconds before transitioning to the main tactical menu. The logo is rendered via `drawLine()` calls — not a bitmap — ensuring pixel-perfect crispness and zero flash overhead.
+*   **Idle Screensaver:** After 30 seconds of no button presses or incoming radio messages (`IDLE_TIMEOUT_MS`), the display transitions to a standby screen showing the logo with `TACTICAL MESH`. This extends OLED panel life and provides an instant visual indication that the terminal is powered and listening but idle.
+*   **Instant Wake:** Any button press immediately wakes the display to the last active menu. The first press is consumed for wake only — no menu action is processed — preventing accidental command dispatch. Incoming radio messages also wake the display and are shown immediately in the inbox.
+
+The screensaver logic is defined in `spectre_logo.h` and integrated into the Core 1 UI loop. It respects `C2_BRIDGE_MODE` (no OLED on the headless gateway) and `composePending` state (no screensaver while a TX confirmation is on screen).
+
 ## 🚀 Getting Started
 
 ### Prerequisites
@@ -67,7 +76,6 @@ The subsystem is gated by a single compile-time flag, `#define ENABLE_DTN 1` in 
 The current prototype is undergoing continuous evaluation to bridge the gap toward defense-readiness. Upcoming features include:
 
 * [ ] **ML-Based Jamming Detection:** Edge-AI integration to detect broadband jamming signatures and autonomously optimize topological routing paths.
-* [ ] **C2 Gateway Integration:** A centralized gateway node featuring Blue Force Tracking (BFT) for real-time situational awareness and unit deployment visualization.
 * [ ] **Anti-Tamper Security:** Implementation of a Cryptographic Kill Switch (Zeroization protocol) to instantly wipe volatile AES keys and ECC architecture upon physical breach or capture.
 
 ## 👥 Core Development Team

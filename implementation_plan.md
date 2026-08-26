@@ -60,6 +60,17 @@ Based on an architectural review of the `spectre-main` and `spectre-dashboard` d
 - [x] **Data Mule Dump:** The Core 0 radio task calls `dtnDumpOnePacket()` every `DTN_DUMP_INTERVAL_MS` (5 s). When a stored packet's target reappears in the mesh, it is burst-transmitted (one packet per call, to respect channel fairness / duty cycle and FHSS hopping) and the file is deleted. Corrupt/oversized headers are dropped safely rather than read into the stack buffer.
 - [x] **Cross-core-version portability:** `dtnBaseName`/`dtnIsStoredFile`/`dtnFullPath`/`dtnParseFileId` normalize the differing `File::name()` semantics between arduino-esp32 core 1.0.x (full path) and 2.x/3.x (basename), so the store works regardless of the installed core.
 - [x] **Compile-time toggle:** `#define ENABLE_DTN 1` — set to 0 to disable DTN and revert to drop-on-unreachable. DTN code is guarded `#if ENABLE_DTN && !SIMULATOR_MODE` since store-carry-forward requires the radio.
+### OLED Logo & Idle Screensaver — ✅ COMPLETE
+
+#### [NEW] `spectre-main/src/spectre_logo.h`
+- [x] **Vector Logo Renderer:** The geometric S.P.E.C.T.R.E. "M" icon is drawn via `drawLine()` calls for pixel-perfect crispness on the monochrome SSD1306 (no bitmap blob, zero flash overhead for image data).
+- [x] **Boot Splash:** `drawSpectreBootScreen()` displays the logo + `SYSTEM ONLINE` + `v2.0 [SECURED]` for 2.5 seconds at power-on.
+- [x] **Standby Screensaver:** `drawSpectreLogo()` displays the logo + `TACTICAL MESH` after `IDLE_TIMEOUT_MS` (30 s) of no button presses or incoming messages.
+
+#### [MODIFY] `spectre-main/src/main.cpp`
+- [x] **Idle Timer:** `lastActivityMs` tracks the last user/RX event. `resetIdleTimer()` is called on every button press and incoming radio message.
+- [x] **Wake Logic:** First button press during screensaver wakes the display (no menu action processed). Incoming RX messages during screensaver are displayed immediately.
+- [x] **Seamless Integration:** Screensaver respects `C2_BRIDGE_MODE` (no OLED on gateway) and `composePending` state (no screensaver while TX confirmation is showing).
 
 ### Sprint D: Edge-AI Jamming Detection & Anti-Tamper
 
