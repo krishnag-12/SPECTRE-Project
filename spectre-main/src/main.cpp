@@ -18,6 +18,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <AceButton.h>
+#include "spectre_logo.h"
 
 // Cryptography Libraries
 #include "mbedtls/aes.h"
@@ -1128,6 +1129,8 @@ static void drawInbox(const MessageEvent& msg) {
 // =============================================================================
 static void handleButtonEvent(AceButton* button, uint8_t eventType, uint8_t) {
     if (eventType != AceButton::kEventPressed) return;
+    resetIdleTimer();  // Any button press wakes the screensaver
+    if (screensaverActive) return; // First press just wakes; don't process as menu input
     uint8_t pin = button->getPin();
     if (currentMenu == MENU_MAIN) {
         if (pin == BTN_UP_PIN) {
@@ -1164,6 +1167,23 @@ static void handleButtonEvent(AceButton* button, uint8_t eventType, uint8_t) {
 static uint32_t composeDoneMs = 0;
 static bool     composePending = false;
 
+// Idle / screensaver state (Sprint C+ polish)
+// After IDLE_TIMEOUT_MS of no button presses or RX messages,
+// the SPECTRE logo screensaver is displayed. Any activity wakes it.
+#define IDLE_TIMEOUT_MS   30000   // 30 seconds of inactivity
+static uint32_t lastActivityMs   = 0;
+static bool     screensaverActive = false;
+
+static void resetIdleTimer() {
+    lastActivityMs = millis();
+    if (screensaverActive) {
+        screensaverActive = false;
+        // Wake: redraw whatever screen was showing before the screensaver
+        needRedraw = true;
+        if (currentMenu == MENU_MAIN) drawMainMenu();
+    }
+}
+
 void setup() {
     Serial.begin(115200);
     delay(500);
@@ -1187,20 +1207,11 @@ void setup() {
     display.dim(false); // Make sure contrast isn't 0
 
     // =========================================================================
-    // THE PROOF OF LIFE SCREEN
+    // BOOT SPLASH — S.P.E.C.T.R.E. Logo
     // =========================================================================
-    display.clearDisplay();
-    display.setTextColor(SSD1306_WHITE);
-    display.setTextSize(2);
-    display.setCursor(18, 15);
-    display.println("SPECTRE");
-    display.setTextSize(1);
-    display.setCursor(16, 40);
-    display.println("DISPLAY ONLINE");
-    display.display();
-
-    DEBUG_PRINTLN("[Setup] Display OK.");
-    delay(2500); // Wait 2.5 seconds to admire your fully working display
+    drawSpectreBootScreen(display);
+    DEBUG_PRINTLN("[Setup] Display OK — boot logo shown.");
+    delay(2500); // Hold the logo for 2.5 seconds
     // =========================================================================
 
     currentMenu = MENU_MAIN;
@@ -1230,6 +1241,7 @@ void setup() {
     ButtonConfig* config = ButtonConfig::getSystemButtonConfig();
     config->setEventHandler(handleButtonEvent);
     config->setFeature(ButtonConfig::kFeatureClick);
+    lastActivityMs = millis(); // Start the idle timer from boot
 #endif
 }
 
@@ -1252,16 +1264,51 @@ void loop() {
     taskYIELD();
     return;
 #else
+    // =========================================================================
+    // SCREENSAVER: Show SPECTRE logo after IDLE_TIMEOUT_MS of inactivity
+    // =========================================================================
+    if (!screensaverActive && !composePending &&
+        (millis() - lastActivityMs >= IDLE_TIMEOUT_MS)) {
+        screensaverActive = true;
+        drawSpectreLogo(display);
+    }
+
+    // If screensaver is active, only check buttons (wake handled in handler)
+    // and check for incoming messages (which also wake the display).
+    btnUp.check();
+    btnDown.check();
+    btnSel.check();
+
+    if (screensaverActive) {
+        // Still check for incoming messages while screensaver is on
+        MessageEvent inMsg;
+        if (xQueueReceive(rxQueue, &inMsg, 0) == pdPASS) {
+            resetIdleTimer(); // Wake on RX
+            if (inMsg.messageID == 0xFF) {
+                display.clearDisplay();
+                display.setTextColor(SSD1306_BLACK, SSD1306_WHITE);
+                display.setTextSize(1);
+                display.setCursor(0, 15);
+                display.println(" RADIO ERROR! ");
+                display.setTextColor(SSD1306_WHITE);
+                display.setCursor(0, 30);
+                display.print(inMsg.payload);
+                display.display();
+            } else {
+                drawInbox(inMsg);
+                currentMenu = MENU_INBOX;
+            }
+        }
+        taskYIELD();
+        return; // Skip normal UI processing while screensaver is active
+    }
+
     // Non-blocking UI timer for composition screens
     if (composePending && (millis() - composeDoneMs > 1200)) {
         composePending = false;
         currentMenu = MENU_MAIN;
         drawMainMenu();
     }
-
-    btnUp.check();
-    btnDown.check();
-    btnSel.check();
 
     if (menuChanged) {
         menuChanged = false;
@@ -1308,6 +1355,7 @@ void loop() {
     // Process incoming radio messages
     MessageEvent inMsg;
     if (xQueueReceive(rxQueue, &inMsg, 0) == pdPASS) {
+        resetIdleTimer(); // Any incoming message resets the idle timer
         if (inMsg.messageID == 0xFF) {
             display.clearDisplay();
             display.setTextColor(SSD1306_BLACK, SSD1306_WHITE); 
