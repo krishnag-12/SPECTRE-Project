@@ -61,20 +61,20 @@ static void drawSpectreLogo(Adafruit_SSD1306& disp) {
     drawSpectreIcon(disp, 4, 17);
 
     // Draw "S.P.E.C.T.R.E." text to the right of the icon
-    // Using size 1 (6x8) for the label, positioned to align vertically
-    // with the icon center
+    // At text size 1, each char is 6px wide. Available width from x=44
+    // to x=128 is 84px = exactly 14 characters.
     disp.setTextColor(SSD1306_WHITE);
     disp.setTextSize(1);
-    disp.setCursor(48, 28); // Right of icon, vertically centered
-    disp.print("S.P.E.C.T.R.E.");
+    disp.setCursor(44, 28); // Right of icon, vertically centered
+    disp.print("S.P.E.C.T.R.E."); // 14 chars = 84px → 44+84 = 128 ✓
 
     // Thin horizontal rule below the text for visual polish
-    disp.drawLine(48, 39, 124, 39, SSD1306_WHITE);
+    disp.drawLine(44, 39, 127, 39, SSD1306_WHITE);
 
     // Subtitle: small system status below the rule
     disp.setTextSize(1);
-    disp.setCursor(52, 43);
-    disp.print("TACTICAL  MESH");
+    disp.setCursor(44, 43);
+    disp.print("TACTICAL MESH");  // 13 chars = 78px → fits ✓
 
     disp.display();
 }
@@ -88,22 +88,22 @@ static void drawSpectreBootScreen(Adafruit_SSD1306& disp) {
     // Draw the geometric M icon
     drawSpectreIcon(disp, 4, 10);
 
-    // Large title
+    // Large title — 14 chars max (6px each = 84px, x=44 to x=128)
     disp.setTextColor(SSD1306_WHITE);
     disp.setTextSize(1);
-    disp.setCursor(48, 18);
-    disp.print("S.P.E.C.T.R.E.");
+    disp.setCursor(44, 18);
+    disp.print("S.P.E.C.T.R.E."); // 14 chars → 44+84 = 128 ✓
 
     // Horizontal rule
-    disp.drawLine(48, 29, 124, 29, SSD1306_WHITE);
+    disp.drawLine(44, 29, 127, 29, SSD1306_WHITE);
 
     // Boot status text
-    disp.setCursor(48, 34);
-    disp.print("SYSTEM  ONLINE");
+    disp.setCursor(44, 34);
+    disp.print("SYSTEM ONLINE");   // 13 chars → fits ✓
 
     // Version / build info
-    disp.setCursor(48, 46);
-    disp.print("v2.0  [SECURED]");
+    disp.setCursor(44, 46);
+    disp.print("v2.0 [SECURED]");  // 14 chars → 44+84 = 128 ✓
 
     disp.display();
 }
