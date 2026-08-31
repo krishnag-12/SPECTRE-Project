@@ -292,10 +292,9 @@ static volatile RadioState radioState = RADIO_STATE_STANDBY;
 
 enum MenuState {
     MENU_MAIN, MENU_INBOX, MENU_COMPOSE,
-    MENU_TAC_CFG,        // MEDEVAC TX mode configuration
-    MENU_TAC_TARGET,     // MEDEVAC individual target selection
-    MENU_TAC_EDIT,       // MEDEVAC line data editing
-    MENU_TAC_SENT        // MEDEVAC TX confirmation
+    MENU_TAC_CFG,        // Tactical TX mode configuration
+    MENU_TAC_TARGET,     // Tactical individual target selection
+    MENU_TAC_SENT        // Tactical TX confirmation
 };
 static MenuState   currentMenu = MENU_MAIN;
 static int         menuCursor  = 0;
@@ -316,7 +315,7 @@ static const char* tacMessages[] = {
     "BROADCASTING PUBLIC ECDH KEY..."
 };
 
-// Known target node IDs for MEDEVAC individual mode selection
+// Known target node IDs for Tactical individual mode selection
 static const char* tacKnownNodes[] = {
     "Alpha-1", "Bravo-2", "Charlie-3", "Delta-4",
     "Echo-5", "C2-Base", "Gateway-1"
@@ -1143,7 +1142,7 @@ static void drawMainMenu() {
 
 static void drawInbox(const MessageEvent& msg) {
     display.clearDisplay();
-    // Check if this is a MEDEVAC message
+    // Check if this is a Tactical quick message
     uint8_t mLine = tacParseLineNumber(msg.payload);
     if (mLine > 0) {
         drawStatusBar(85, 72, "TAC MSG");
@@ -1176,7 +1175,7 @@ static void drawInbox(const MessageEvent& msg) {
     }
 }
 
-// Draw MEDEVAC TX confirmation screen
+// Draw Tactical TX confirmation screen
 static void drawTacSent(uint8_t lineNum) {
     display.clearDisplay();
     drawStatusBar(85, 72, "TAC MSG");
@@ -1197,14 +1196,14 @@ static void drawTacSent(uint8_t lineNum) {
     display.print("SENT");
     display.display();
 }
-// Draw MEDEVAC config menu
+// Draw Tactical config menu
 static void drawTacCfgMenu() {
     display.clearDisplay();
     drawStatusBar(85, 72, "TACCFG");
     display.setTextColor(SSD1306_WHITE);
     display.setTextSize(1);
     display.setCursor(0, 12);
-    display.println("MEDEVAC TX MODE");
+    display.println("TAC TX MODE");
     display.drawLine(0, 22, 128, 22, SSD1306_WHITE);
     // Option 0: BROADCAST
     display.setCursor(0, 26);
@@ -1230,7 +1229,7 @@ static void drawTacCfgMenu() {
     display.display();
 }
 
-// Draw MEDEVAC target node selection
+// Draw Tactical target node selection
 static void drawTacTargetMenu() {
     display.clearDisplay();
     drawStatusBar(85, 72, "TARGET");
@@ -1259,7 +1258,7 @@ static void drawTacTargetMenu() {
 }
 
 // =============================================================================
-// MEDEVAC BUTTON HANDLER — 9 dedicated line buttons
+// TACTICAL BUTTON HANDLER — 9 dedicated quick-message buttons
 // =============================================================================
 static void handleTacButtonEvent(AceButton* button, uint8_t eventType, uint8_t) {
     if (eventType != AceButton::kEventPressed) return;
@@ -1273,7 +1272,7 @@ static void handleTacButtonEvent(AceButton* button, uint8_t eventType, uint8_t) 
     }
     if (lineNum < 1 || lineNum > 9) return;
 
-    // Build and queue the MEDEVAC message using existing TX infrastructure
+    // Build and queue the tactical message using existing TX infrastructure
     MessageEvent txMsg;
     memset(&txMsg, 0, sizeof(txMsg));
     txMsg.messageID = TAC_MSG_ID_BASE + (uint8_t)lineNum; // 0xD1-0xD9
@@ -1301,7 +1300,7 @@ static void handleButtonEvent(AceButton* button, uint8_t eventType, uint8_t) {
     if (screensaverActive) return;
     uint8_t pin = button->getPin();
 
-    // --- MEDEVAC Config Menu ---
+    // --- Tactical Config Menu ---
     if (currentMenu == MENU_TAC_CFG) {
         if (pin == BTN_UP_PIN) {
             menuCursor = (menuCursor == 0) ? 1 : 0;
@@ -1325,7 +1324,7 @@ static void handleButtonEvent(AceButton* button, uint8_t eventType, uint8_t) {
         return;
     }
 
-    // --- MEDEVAC Target Selection ---
+    // --- Tactical Target Selection ---
     if (currentMenu == MENU_TAC_TARGET) {
         if (pin == BTN_UP_PIN) {
             tacTargetCursor = (tacTargetCursor - 1 + tacKnownNodeCount) % tacKnownNodeCount;
@@ -1463,7 +1462,7 @@ void setup() {
 
     // Initialize 9 Tactical buttons
     // GPIO 34 is input-only (no internal pull-up) — requires external pull-up resistor.
-    // All other MEDEVAC GPIOs use INPUT_PULLUP (internal pull-up, active LOW).
+    // All other tactical GPIOs use INPUT_PULLUP (internal pull-up, active LOW).
     static ButtonConfig tacBtnConfig;
     tacBtnConfig.setEventHandler(handleTacButtonEvent);
     tacBtnConfig.setFeature(ButtonConfig::kFeatureClick);
@@ -1511,7 +1510,7 @@ void loop() {
 
     // If screensaver is active, only check buttons (wake handled in handler)
     // and check for incoming messages (which also wake the display).
-    // Poll all buttons (nav + 9 MEDEVAC)
+    // Poll all buttons (nav + 9 tactical)
     btnUp.check();
     btnDown.check();
     btnSel.check();

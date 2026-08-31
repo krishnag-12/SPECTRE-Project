@@ -48,7 +48,7 @@ After boot, the main tactical menu is displayed. Use the buttons to navigate:
 | 3 | `REGROUP TX` | Regroup order: *"All units regroup at Checkpoint Bravo."* |
 | 4 | `SITREP TX` | Status report: *"Status nominal. Holding position. No enemy contact."* |
 | 5 | `KEY EXCH TX` | Broadcast ECDH public key for secure key exchange with nearby nodes |
-| 6 | `Tactical Quick Message CFG` | Configure 9 Tactical Quick Messages transmission mode (Broadcast / Individual + target) |
+| 6 | `TAC MSG CFG` | Configure 9 Tactical Quick Messages transmission mode (Broadcast / Individual + target) |
 | 7 | `INBOX` | View the most recently received message |
 
 > **Note:** The menu scrolls. Use UP/DOWN to scroll through all 7 items.
