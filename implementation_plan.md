@@ -72,6 +72,25 @@ Based on an architectural review of the `spectre-main` and `spectre-dashboard` d
 - [x] **Wake Logic:** First button press during screensaver wakes the display (no menu action processed). Incoming RX messages during screensaver are displayed immediately.
 - [x] **Seamless Integration:** Screensaver respects `C2_BRIDGE_MODE` (no OLED on gateway) and `composePending` state (no screensaver while TX confirmation is showing).
 
+### 9-Line MEDEVAC Messaging — ✅ COMPLETE
+
+#### [NEW] `spectre-main/src/spectre_medevac.h`
+- [x] **9-Line Data Model:** Indian military MEDEVAC standard — Location, Comms, Patients by Precedence, Special Equipment, Patient Type, Security, Marking, Nationality, CBRN/Terrain.
+- [x] **GPIO Pin Mapping:** 9 dedicated physical buttons on GPIOs 4, 16, 17, 13, 12, 27, 2, 15, 34. GPIO 34 is input-only (external pull-up). All others use `INPUT_PULLUP`.
+- [x] **Payload Format:** `MEDEVAC:L<n>:<B|I>:<target>:<data>` — structured, parseable, fits within `MAX_PAYLOAD_LEN`.
+- [x] **Message ID Range:** `0xD1–0xD9` (no collision with existing IDs).
+- [x] **Parser Helpers:** `medevacParseLineNumber()`, `medevacParseMode()`, `medevacParseTarget()`.
+
+#### [MODIFY] `spectre-main/src/main.cpp`
+- [x] **MEDEVAC Button Handler:** Separate `handleMedevacButtonEvent()` with AceButton debouncing on a dedicated `ButtonConfig`. Press → build payload → queue `MessageEvent` → show OLED confirmation → auto-return to main menu after 1.2s.
+- [x] **TX Mode State:** `medevacMode` (BROADCAST/INDIVIDUAL), `medevacTargetNode`. Default: BROADCAST.
+- [x] **Menu Integration:** `MEDEVAC CFG` entry in main menu → BROADCAST/INDIVIDUAL selection → target node picker (7 known nodes). Existing menu patterns reused.
+- [x] **RX MEDEVAC Display:** `drawInbox()` detects MEDEVAC payloads and shows structured `9-LINE MEDEVAC L<n>` header with line label and data.
+- [x] **Main Menu Scrolling:** Menu now scrolls (7 items, 6 visible lines) to accommodate the new `MEDEVAC CFG` entry.
+
+#### [MODIFY] `spectre-c2-gateway/src/main.cpp`
+- [x] **MEDEVAC-Aware JSON:** Gateway detects MEDEVAC payloads and emits enriched JSON with `kind:"medevac"`, `medevacLine`, `medevacMode`, `medevacTarget` fields. Non-MEDEVAC messages unchanged.
+
 ### Sprint D: Edge-AI Jamming Detection & Anti-Tamper
 
 #### [NEW] `spectre-main/src/ml_anomaly.cpp`

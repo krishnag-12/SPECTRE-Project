@@ -77,6 +77,21 @@ Field nodes run full UI menu state machines, send tactical alerts, and communica
    cd spectre-main
    pio run --target upload
    ```
+5. **9-Line MEDEVAC Button Wiring** (see `spectre_medevac.h` for pin definitions):
+
+   | Button | Line | ESP32 GPIO | Notes |
+   |--------|------|-----------|-------|
+   | L1 | Location | GPIO 4 | `INPUT_PULLUP`, active LOW |
+   | L2 | Comms | GPIO 16 | `INPUT_PULLUP`, active LOW |
+   | L3 | Patients | GPIO 17 | `INPUT_PULLUP`, active LOW |
+   | L4 | Special Equip | GPIO 13 | `INPUT_PULLUP`, active LOW |
+   | L5 | Patient Type | GPIO 12 | `INPUT_PULLUP`, active LOW (boot strapping pin) |
+   | L6 | Security | GPIO 27 | `INPUT_PULLUP`, active LOW |
+   | L7 | Marking | GPIO 2 | `INPUT_PULLUP`, active LOW (onboard LED) |
+   | L8 | Nationality | GPIO 15 | `INPUT_PULLUP`, active LOW |
+   | L9 | CBRN/Terrain | GPIO 34 | **Input-only, requires external 10kΩ pull-up to 3.3V** |
+
+   Wire each button between the GPIO pin and GND. All GPIOs except GPIO 34 use internal pull-ups.
 
 ---
 
@@ -155,6 +170,12 @@ SPECTRE_MOCK=false npm run electron:dev
    - **Verify persistence (optional)**: Reboot `Alpha-1`. On boot, `dtnInitStorage()` rescans SPIFFS, so the buffered packet and its auto-incrementing file-ID sequence survive the power cycle.
    - **Reconnect / data-mule dump**: Power `Bravo-2` back on (or bring it into range). Within `DTN_DUMP_INTERVAL_MS` (5 s) of `Alpha-1` next hearing a frame from `Bravo-2`, `Alpha-1` burst-transmits the buffered packet (one per dump cycle, to respect duty cycle and FHSS hopping) and deletes the flash copy.
    - **Confirm delivery**: `Bravo-2` receives, decrypts, and displays the delayed SITREP; the buffered count on `Alpha-1` returns to zero. The payload was never decrypted while stored — COMSEC is preserved end-to-end.
+8. **9-Line MEDEVAC Transmission** (requires 9-Line MEDEVAC buttons wired on field nodes):
+   - Default mode is **BROADCAST**. Press any MEDEVAC button (L1–L9) to immediately transmit that MEDEVAC line.
+   - OLED shows `MEDEVAC LINE <N> / <LABEL> / TX BROADCAST / SENT` confirmation for 1.2s.
+   - **Verify on C2 Gateway**: The Base Station outputs MEDEVAC-enriched JSON:
+     `{"kind":"medevac","nodeId":"Alpha-1","msgId":209,"hopCount":3,"medevacLine":1,"medevacMode":"B","medevacTarget":"*","status":"ACTIVE","rssi":-65,"snr":9.5,"payload":"MEDEVAC:L1:B:*:GRID TBD","timestamp":...}`
+   - **Individual mode**: Navigate to `MEDEVAC CFG` on the main menu, select `INDIVIDUAL`, choose a target node. Subsequent MEDEVAC button presses address that specific node while the C2 gateway still receives the message.
 
 ---
 

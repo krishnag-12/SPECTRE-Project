@@ -324,17 +324,53 @@ void taskGatewayRadio(void* pvParameters) {
                         char escapedPayload[MAX_PAYLOAD_LEN * 2];
                         jsonEscape(plaintext, escapedPayload, sizeof(escapedPayload));
                         const char* packetNodeId = rxPkt->nodeId[0] != '\0' ? rxPkt->nodeId : "Unknown-0";
-                        
-                        Serial.printf(
-                            "{\"nodeId\":\"%s\",\"msgId\":%u,\"hopCount\":%u,\"status\":\"ACTIVE\",\"posX\":0.0,\"posY\":0.0,\"rssi\":%d,\"snr\":%.2f,\"anomalyScore\":0.0,\"payload\":\"%s\",\"timestamp\":%lu}\n",
-                            packetNodeId,
-                            (unsigned int)rxPkt->messageID,
-                            (unsigned int)rxPkt->hopCount,
-                            (int)radio.getRSSI(),
-                            (double)radio.getSNR(),
-                            escapedPayload,
-                            (unsigned long)(millis() / 1000)
-                        );
+
+                        // Detect MEDEVAC messages (payload starts with "MEDEVAC:L")
+                        bool isMedevac = (strncmp(plaintext, "MEDEVAC:L", 9) == 0
+                                          && plaintext[9] >= '1' && plaintext[9] <= '9');
+                        if (isMedevac) {
+                            uint8_t medevacLine = plaintext[9] - '0';
+                            char modeChar = (strlen(plaintext) > 11) ? plaintext[11] : 'B';
+                            // Extract target (between 3rd and 4th ':')
+                            char medevacTarget[16] = "*";
+                            if (strlen(plaintext) > 13) {
+                                const char* tStart = plaintext + 13;
+                                const char* tEnd = strchr(tStart, ':');
+                                if (tEnd) {
+                                    size_t tLen = (size_t)(tEnd - tStart);
+                                    if (tLen > 15) tLen = 15;
+                                    strncpy(medevacTarget, tStart, tLen);
+                                    medevacTarget[tLen] = '\0';
+                                }
+                            }
+                            Serial.printf(
+                                "{\"kind\":\"medevac\",\"nodeId\":\"%s\",\"msgId\":%u,\"hopCount\":%u,"
+                                "\"medevacLine\":%u,\"medevacMode\":\"%c\",\"medevacTarget\":\"%s\","
+                                "\"status\":\"ACTIVE\",\"rssi\":%d,\"snr\":%.2f,"
+                                "\"payload\":\"%s\",\"timestamp\":%lu}\n",
+                                packetNodeId,
+                                (unsigned int)rxPkt->messageID,
+                                (unsigned int)rxPkt->hopCount,
+                                (unsigned int)medevacLine,
+                                modeChar,
+                                medevacTarget,
+                                (int)radio.getRSSI(),
+                                (double)radio.getSNR(),
+                                escapedPayload,
+                                (unsigned long)(millis() / 1000)
+                            );
+                        } else {
+                            Serial.printf(
+                                "{\"nodeId\":\"%s\",\"msgId\":%u,\"hopCount\":%u,\"status\":\"ACTIVE\",\"posX\":0.0,\"posY\":0.0,\"rssi\":%d,\"snr\":%.2f,\"anomalyScore\":0.0,\"payload\":\"%s\",\"timestamp\":%lu}\n",
+                                packetNodeId,
+                                (unsigned int)rxPkt->messageID,
+                                (unsigned int)rxPkt->hopCount,
+                                (int)radio.getRSSI(),
+                                (double)radio.getSNR(),
+                                escapedPayload,
+                                (unsigned long)(millis() / 1000)
+                            );
+                        }
                     }
                 }
             }
