@@ -48,59 +48,59 @@ After boot, the main tactical menu is displayed. Use the buttons to navigate:
 | 3 | `REGROUP TX` | Regroup order: *"All units regroup at Checkpoint Bravo."* |
 | 4 | `SITREP TX` | Status report: *"Status nominal. Holding position. No enemy contact."* |
 | 5 | `KEY EXCH TX` | Broadcast ECDH public key for secure key exchange with nearby nodes |
-| 6 | `MEDEVAC CFG` | Configure 9-Line MEDEVAC transmission mode (Broadcast / Individual + target) |
+| 6 | `Tactical Quick Message CFG` | Configure 9 Tactical Quick Messages transmission mode (Broadcast / Individual + target) |
 | 7 | `INBOX` | View the most recently received message |
 
 > **Note:** The menu scrolls. Use UP/DOWN to scroll through all 7 items.
 
 ---
 
-## 4. 9-Line MEDEVAC Operations
+## 4. 9 Tactical Quick Messages Operations
 
 ### Overview
 
-The S.P.E.C.T.R.E. terminal includes **9 dedicated physical buttons** for rapid MEDEVAC (Medical Evacuation Request) transmission. Each button corresponds to one of the nine standard MEDEVAC lines used in Indian military operations.
+The S.P.E.C.T.R.E. terminal includes **9 dedicated physical buttons** for rapid Tactical Quick Message transmission. Each button corresponds to one of the nine standard Indian military operational commands or messages.
 
-### MEDEVAC Line Definitions
+### Tactical Quick Message Line Definitions
 
-| Button | Line | Content |
-|--------|------|---------|
-| **L1** | Location | Pickup-site grid coordinates |
-| **L2** | Communications | Radio frequency, callsign, suffix |
-| **L3** | Patients | Count by precedence: Urgent / Priority / Routine |
-| **L4** | Special Equipment | Hoist, ventilator, extraction equipment |
-| **L5** | Patient Type | Litter / Ambulatory count |
-| **L6** | Security | Pickup-site security status |
-| **L7** | Marking | Panels, pyrotechnic signals, smoke |
-| **L8** | Nationality | Patient nationality and status |
-| **L9** | CBRN/Terrain | CBRN contamination / terrain description |
+| Button | Label | Purpose |
+|--------|-------|---------|
+| **1** | CONTACT | Enemy contact / engagement |
+| **2** | SATHI GHAYAL | Buddy wounded / casualty |
+| **3** | MAYDAY | Extreme emergency |
+| **4** | LZ CLEAR | Landing/extraction zone clear |
+| **5** | LZ HOT | Landing/extraction zone compromised/dangerous |
+| **6** | TARGET SPOTTED | Enemy visually identified |
+| **7** | SITREP | Request/send situation report |
+| **8** | WILCO | Order understood and will comply |
+| **9** | OUT | Transmission/conversation terminated |
 
-### MEDEVAC Button Wiring
+### Tactical Quick Message Button Wiring
 
 | Button | GPIO | Notes |
 |--------|------|-------|
-| L1 | 4 | `INPUT_PULLUP`, active LOW |
-| L2 | 16 | `INPUT_PULLUP`, active LOW |
-| L3 | 17 | `INPUT_PULLUP`, active LOW |
-| L4 | 13 | `INPUT_PULLUP`, active LOW |
-| L5 | 12 | `INPUT_PULLUP`, active LOW (boot strapping pin) |
-| L6 | 27 | `INPUT_PULLUP`, active LOW |
-| L7 | 2 | `INPUT_PULLUP`, active LOW (onboard LED) |
-| L8 | 15 | `INPUT_PULLUP`, active LOW |
-| L9 | 34 | **Input-only — requires external 10kΩ pull-up to 3.3V** |
+| 1 | 4 | `INPUT_PULLUP`, active LOW |
+| 2 | 16 | `INPUT_PULLUP`, active LOW |
+| 3 | 17 | `INPUT_PULLUP`, active LOW |
+| 4 | 13 | `INPUT_PULLUP`, active LOW |
+| 5 | 12 | `INPUT_PULLUP`, active LOW (boot strapping pin) |
+| 6 | 27 | `INPUT_PULLUP`, active LOW |
+| 7 | 2 | `INPUT_PULLUP`, active LOW (onboard LED) |
+| 8 | 15 | `INPUT_PULLUP`, active LOW |
+| 9 | 34 | **Input-only — requires external 10kΩ pull-up to 3.3V** |
 
 Wire each button between the GPIO pin and GND.
 
-### How to Send a MEDEVAC Line
+### How to Send a Tactical Quick Message
 
-1. Press the corresponding MEDEVAC button (L1–L9).
+1. Press the corresponding Tactical Quick Message button (1–9).
 2. The message is **immediately encrypted and transmitted** — no manual composition needed.
 3. The OLED confirms:
    ```
-   MEDEVAC LINE 3
-   PATIENTS
+   TAC L3
+   MAYDAY
    ──────────────
-   TX BROADCAST
+   TX -> BROADCAST
    SENT
    ```
 4. The display returns to the main menu after 1.2 seconds.
@@ -109,35 +109,35 @@ Wire each button between the GPIO pin and GND.
 
 #### Broadcast (Default)
 
-The MEDEVAC line is sent to **all mesh nodes** and the **C2 gateway**.
+The Tactical Quick Message is sent to **all mesh nodes** and the **C2 gateway**.
 
 No configuration required — this is the default after boot.
 
 #### Individual
 
-The MEDEVAC line is addressed to a **specific target node**. The C2 gateway **always** receives the message regardless.
+The Tactical Quick Message is addressed to a **specific target node**. The C2 gateway **always** receives the message regardless.
 
 To configure Individual mode:
 
-1. Navigate to `MEDEVAC CFG` in the main menu → press **SELECT**.
+1. Navigate to `TAC MSG CFG` in the main menu → press **SELECT**.
 2. Select `INDIVIDUAL` → press **SELECT**.
 3. Choose a target node from the list → press **SELECT**.
-4. The device returns to the main menu. All subsequent MEDEVAC button presses will be addressed to the selected node.
+4. The device returns to the main menu. All subsequent Tactical Quick Message button presses will be addressed to the selected node.
 
 To switch back to Broadcast:
 
-1. Navigate to `MEDEVAC CFG` → press **SELECT**.
+1. Navigate to `TAC MSG CFG` → press **SELECT**.
 2. Select `BROADCAST` → press **SELECT**.
 
-### MEDEVAC on the Receiving Side
+### Tactical Quick Message on the Receiving Side
 
-When a MEDEVAC message arrives, the OLED shows:
+When a Tactical Quick Message arrives, the OLED shows:
 
 ```
-9-LINE MEDEVAC L3
+TAC MSG L3
 ──────────────────
-PATIENTS
-U:2 P:1 R:0
+MAYDAY
+MAYDAY MAYDAY MAYDAY. Life-threatening emergency.
 ```
 
 Press any button to return to the main menu.

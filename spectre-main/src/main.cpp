@@ -19,7 +19,7 @@
 #include <Adafruit_SSD1306.h>
 #include <AceButton.h>
 #include "spectre_logo.h"
-#include "spectre_medevac.h"
+#include "spectre_tactical.h"
 
 // Cryptography Libraries
 #include "mbedtls/aes.h"
@@ -268,13 +268,13 @@ AceButton btnUp(BTN_UP_PIN);
 AceButton btnDown(BTN_DOWN_PIN);
 AceButton btnSel(BTN_SEL_PIN);
 
-// 9-Line MEDEVAC dedicated buttons (see spectre_medevac.h for pin mapping)
-AceButton btnMedevac[9] = {
-    AceButton(MEDEVAC_BTN_L1_PIN), AceButton(MEDEVAC_BTN_L2_PIN),
-    AceButton(MEDEVAC_BTN_L3_PIN), AceButton(MEDEVAC_BTN_L4_PIN),
-    AceButton(MEDEVAC_BTN_L5_PIN), AceButton(MEDEVAC_BTN_L6_PIN),
-    AceButton(MEDEVAC_BTN_L7_PIN), AceButton(MEDEVAC_BTN_L8_PIN),
-    AceButton(MEDEVAC_BTN_L9_PIN)
+// 9 Tactical Quick Message buttons (see spectre_tactical.h for pin mapping)
+AceButton btnTac[9] = {
+    AceButton(TAC_BTN_L1_PIN), AceButton(TAC_BTN_L2_PIN),
+    AceButton(TAC_BTN_L3_PIN), AceButton(TAC_BTN_L4_PIN),
+    AceButton(TAC_BTN_L5_PIN), AceButton(TAC_BTN_L6_PIN),
+    AceButton(TAC_BTN_L7_PIN), AceButton(TAC_BTN_L8_PIN),
+    AceButton(TAC_BTN_L9_PIN)
 };
 
 volatile bool rxFlag    = false;
@@ -292,10 +292,10 @@ static volatile RadioState radioState = RADIO_STATE_STANDBY;
 
 enum MenuState {
     MENU_MAIN, MENU_INBOX, MENU_COMPOSE,
-    MENU_MEDEVAC_CFG,        // MEDEVAC TX mode configuration
-    MENU_MEDEVAC_TARGET,     // MEDEVAC individual target selection
-    MENU_MEDEVAC_EDIT,       // MEDEVAC line data editing
-    MENU_MEDEVAC_SENT        // MEDEVAC TX confirmation
+    MENU_TAC_CFG,        // MEDEVAC TX mode configuration
+    MENU_TAC_TARGET,     // MEDEVAC individual target selection
+    MENU_TAC_EDIT,       // MEDEVAC line data editing
+    MENU_TAC_SENT        // MEDEVAC TX confirmation
 };
 static MenuState   currentMenu = MENU_MAIN;
 static int         menuCursor  = 0;
@@ -305,7 +305,7 @@ static bool        menuChanged = false;
 
 static const char* menuItems[] = {
     "MAYDAY TX", "EXTRACT TX", "REGROUP TX", "SITREP TX",
-    "KEY EXCH TX", "MEDEVAC CFG", "INBOX"
+    "KEY EXCH TX", "TAC MSG CFG", "INBOX"
 };
 static const int menuCount = 7;
 static const char* tacMessages[] = {
@@ -317,13 +317,13 @@ static const char* tacMessages[] = {
 };
 
 // Known target node IDs for MEDEVAC individual mode selection
-static const char* medevacKnownNodes[] = {
+static const char* tacKnownNodes[] = {
     "Alpha-1", "Bravo-2", "Charlie-3", "Delta-4",
     "Echo-5", "C2-Base", "Gateway-1"
 };
-static const int medevacKnownNodeCount = 7;
-static int medevacTargetCursor = 0;
-static uint8_t lastMedevacLineSent = 0; // For TX confirmation display
+static const int tacKnownNodeCount = 7;
+static int tacTargetCursor = 0;
+static uint8_t lastTacBtnSent = 0; // For TX confirmation display
 
 #if C2_BRIDGE_MODE
   #define DEBUG_PRINTLN(msg) do {} while (0)
@@ -1144,16 +1144,16 @@ static void drawMainMenu() {
 static void drawInbox(const MessageEvent& msg) {
     display.clearDisplay();
     // Check if this is a MEDEVAC message
-    uint8_t mLine = medevacParseLineNumber(msg.payload);
+    uint8_t mLine = tacParseLineNumber(msg.payload);
     if (mLine > 0) {
-        drawStatusBar(85, 72, "MEDVAC");
+        drawStatusBar(85, 72, "TAC MSG");
         display.setTextColor(SSD1306_WHITE);
         display.setTextSize(1);
         display.setCursor(0, 12);
-        display.printf("9-LINE MEDEVAC L%u", mLine);
+        display.printf("TAC MSG L%u", mLine);
         display.drawLine(0, 22, 128, 22, SSD1306_WHITE);
         display.setCursor(0, 24);
-        display.print(MEDEVAC_SHORT_LABELS[mLine - 1]);
+        display.print(TAC_BTN_LABELS[mLine - 1]);
         display.setCursor(0, 34);
         // Extract and display the data portion after the 4th ':'
         const char* p = msg.payload;
@@ -1177,30 +1177,30 @@ static void drawInbox(const MessageEvent& msg) {
 }
 
 // Draw MEDEVAC TX confirmation screen
-static void drawMedevacSent(uint8_t lineNum) {
+static void drawTacSent(uint8_t lineNum) {
     display.clearDisplay();
-    drawStatusBar(85, 72, "MEDVAC");
+    drawStatusBar(85, 72, "TAC MSG");
     display.setTextColor(SSD1306_WHITE);
     display.setTextSize(1);
     display.setCursor(0, 14);
-    display.printf("MEDEVAC LINE %u", lineNum);
+    display.printf("TAC L%u", lineNum);
     display.setCursor(0, 24);
-    display.print(MEDEVAC_SHORT_LABELS[lineNum - 1]);
+    display.print(TAC_BTN_LABELS[lineNum - 1]);
     display.drawLine(0, 34, 128, 34, SSD1306_WHITE);
     display.setCursor(0, 38);
-    if (medevacMode == MEDEVAC_TX_BROADCAST) {
-        display.print("TX BROADCAST");
+    if (tacTxMode == TAC_TX_BROADCAST) {
+        display.print("TX -> BROADCAST");
     } else {
-        display.printf("TX > %s", medevacTargetNode);
+        display.printf("TX -> %s", tacTargetNode);
     }
     display.setCursor(0, 50);
     display.print("SENT");
     display.display();
 }
 // Draw MEDEVAC config menu
-static void drawMedevacCfgMenu() {
+static void drawTacCfgMenu() {
     display.clearDisplay();
-    drawStatusBar(85, 72, "MEDCFG");
+    drawStatusBar(85, 72, "TACCFG");
     display.setTextColor(SSD1306_WHITE);
     display.setTextSize(1);
     display.setCursor(0, 12);
@@ -1212,7 +1212,7 @@ static void drawMedevacCfgMenu() {
         display.fillRect(0, 25, 128, 9, SSD1306_WHITE);
         display.setTextColor(SSD1306_BLACK);
     }
-    display.print(medevacMode == MEDEVAC_TX_BROADCAST ? ">[BROADCAST]" : "> BROADCAST");
+    display.print(tacTxMode == TAC_TX_BROADCAST ? ">[BROADCAST]" : "> BROADCAST");
     display.setTextColor(SSD1306_WHITE);
     // Option 1: INDIVIDUAL
     display.setCursor(0, 36);
@@ -1220,18 +1220,18 @@ static void drawMedevacCfgMenu() {
         display.fillRect(0, 35, 128, 9, SSD1306_WHITE);
         display.setTextColor(SSD1306_BLACK);
     }
-    display.print(medevacMode == MEDEVAC_TX_INDIVIDUAL ? ">[INDIVIDUAL]" : "> INDIVIDUAL");
+    display.print(tacTxMode == TAC_TX_INDIVIDUAL ? ">[INDIVIDUAL]" : "> INDIVIDUAL");
     display.setTextColor(SSD1306_WHITE);
     // Show current target if individual
-    if (medevacMode == MEDEVAC_TX_INDIVIDUAL) {
+    if (tacTxMode == TAC_TX_INDIVIDUAL) {
         display.setCursor(0, 50);
-        display.printf("TGT: %s", medevacTargetNode);
+        display.printf("TGT: %s", tacTargetNode);
     }
     display.display();
 }
 
 // Draw MEDEVAC target node selection
-static void drawMedevacTargetMenu() {
+static void drawTacTargetMenu() {
     display.clearDisplay();
     drawStatusBar(85, 72, "TARGET");
     display.setTextColor(SSD1306_WHITE);
@@ -1240,19 +1240,19 @@ static void drawMedevacTargetMenu() {
     display.println("SELECT TARGET NODE");
     display.drawLine(0, 22, 128, 22, SSD1306_WHITE);
     int startY = 26;
-    int viewStart = (medevacTargetCursor > 3) ? medevacTargetCursor - 3 : 0;
+    int viewStart = (tacTargetCursor > 3) ? tacTargetCursor - 3 : 0;
     int viewEnd = viewStart + 4;
-    if (viewEnd > medevacKnownNodeCount) viewEnd = medevacKnownNodeCount;
+    if (viewEnd > tacKnownNodeCount) viewEnd = tacKnownNodeCount;
     for (int i = viewStart; i < viewEnd; i++) {
         int y = startY + ((i - viewStart) * 9);
         display.setCursor(0, y);
-        if (i == medevacTargetCursor) {
+        if (i == tacTargetCursor) {
             display.fillRect(0, y - 1, 128, 9, SSD1306_WHITE);
             display.setTextColor(SSD1306_BLACK);
-            display.printf("> %s", medevacKnownNodes[i]);
+            display.printf("> %s", tacKnownNodes[i]);
             display.setTextColor(SSD1306_WHITE);
         } else {
-            display.printf("  %s", medevacKnownNodes[i]);
+            display.printf("  %s", tacKnownNodes[i]);
         }
     }
     display.display();
@@ -1261,7 +1261,7 @@ static void drawMedevacTargetMenu() {
 // =============================================================================
 // MEDEVAC BUTTON HANDLER — 9 dedicated line buttons
 // =============================================================================
-static void handleMedevacButtonEvent(AceButton* button, uint8_t eventType, uint8_t) {
+static void handleTacButtonEvent(AceButton* button, uint8_t eventType, uint8_t) {
     if (eventType != AceButton::kEventPressed) return;
     resetIdleTimer();
     if (screensaverActive) return;
@@ -1269,27 +1269,27 @@ static void handleMedevacButtonEvent(AceButton* button, uint8_t eventType, uint8
     uint8_t pin = button->getPin();
     int lineNum = -1;
     for (int i = 0; i < 9; i++) {
-        if (pin == MEDEVAC_BTN_PINS[i]) { lineNum = i + 1; break; }
+        if (pin == TAC_BTN_PINS[i]) { lineNum = i + 1; break; }
     }
     if (lineNum < 1 || lineNum > 9) return;
 
     // Build and queue the MEDEVAC message using existing TX infrastructure
     MessageEvent txMsg;
     memset(&txMsg, 0, sizeof(txMsg));
-    txMsg.messageID = MEDEVAC_MSG_ID_BASE + (uint8_t)lineNum; // 0xD1-0xD9
+    txMsg.messageID = TAC_MSG_ID_BASE + (uint8_t)lineNum; // 0xD1-0xD9
     txMsg.hopCount  = 3;
-    medevacBuildPayload(txMsg.payload, MAX_PAYLOAD_LEN, (uint8_t)lineNum);
+    tacBuildPayload(txMsg.payload, MAX_PAYLOAD_LEN, (uint8_t)lineNum);
     xQueueSend(txQueue, &txMsg, 0);
 
     // Show TX confirmation on OLED
-    lastMedevacLineSent = (uint8_t)lineNum;
+    lastTacBtnSent = (uint8_t)lineNum;
     composePending = true;
     composeDoneMs = millis();
-    currentMenu = MENU_MEDEVAC_SENT;
-    drawMedevacSent((uint8_t)lineNum);
+    currentMenu = MENU_TAC_SENT;
+    drawTacSent((uint8_t)lineNum);
 
-    DEBUG_PRINTF("[MEDEVAC] Line %d TX queued (%s)\n", lineNum,
-                 medevacMode == MEDEVAC_TX_BROADCAST ? "BROADCAST" : medevacTargetNode);
+    DEBUG_PRINTF("[TAC] Line %d TX queued (%s)\n", lineNum,
+                 tacTxMode == TAC_TX_BROADCAST ? "BROADCAST" : tacTargetNode);
 }
 
 // =============================================================================
@@ -1302,44 +1302,44 @@ static void handleButtonEvent(AceButton* button, uint8_t eventType, uint8_t) {
     uint8_t pin = button->getPin();
 
     // --- MEDEVAC Config Menu ---
-    if (currentMenu == MENU_MEDEVAC_CFG) {
+    if (currentMenu == MENU_TAC_CFG) {
         if (pin == BTN_UP_PIN) {
             menuCursor = (menuCursor == 0) ? 1 : 0;
-            drawMedevacCfgMenu();
+            drawTacCfgMenu();
         } else if (pin == BTN_DOWN_PIN) {
             menuCursor = (menuCursor == 1) ? 0 : 1;
-            drawMedevacCfgMenu();
+            drawTacCfgMenu();
         } else if (pin == BTN_SEL_PIN) {
             if (menuCursor == 0) {
-                medevacMode = MEDEVAC_TX_BROADCAST;
-                strncpy(medevacTargetNode, "*", sizeof(medevacTargetNode));
+                tacTxMode = TAC_TX_BROADCAST;
+                strncpy(tacTargetNode, "*", sizeof(tacTargetNode));
                 menuCursor = 0;
                 nextMenu = MENU_MAIN; menuChanged = true;
             } else {
-                medevacMode = MEDEVAC_TX_INDIVIDUAL;
+                tacTxMode = TAC_TX_INDIVIDUAL;
                 menuCursor = 0;
-                medevacTargetCursor = 0;
-                nextMenu = MENU_MEDEVAC_TARGET; menuChanged = true;
+                tacTargetCursor = 0;
+                nextMenu = MENU_TAC_TARGET; menuChanged = true;
             }
         }
         return;
     }
 
     // --- MEDEVAC Target Selection ---
-    if (currentMenu == MENU_MEDEVAC_TARGET) {
+    if (currentMenu == MENU_TAC_TARGET) {
         if (pin == BTN_UP_PIN) {
-            medevacTargetCursor = (medevacTargetCursor - 1 + medevacKnownNodeCount) % medevacKnownNodeCount;
-            drawMedevacTargetMenu();
+            tacTargetCursor = (tacTargetCursor - 1 + tacKnownNodeCount) % tacKnownNodeCount;
+            drawTacTargetMenu();
         } else if (pin == BTN_DOWN_PIN) {
-            medevacTargetCursor = (medevacTargetCursor + 1) % medevacKnownNodeCount;
-            drawMedevacTargetMenu();
+            tacTargetCursor = (tacTargetCursor + 1) % tacKnownNodeCount;
+            drawTacTargetMenu();
         } else if (pin == BTN_SEL_PIN) {
-            strncpy(medevacTargetNode, medevacKnownNodes[medevacTargetCursor],
-                    sizeof(medevacTargetNode) - 1);
-            medevacTargetNode[sizeof(medevacTargetNode) - 1] = '\0';
+            strncpy(tacTargetNode, tacKnownNodes[tacTargetCursor],
+                    sizeof(tacTargetNode) - 1);
+            tacTargetNode[sizeof(tacTargetNode) - 1] = '\0';
             menuCursor = 0;
             nextMenu = MENU_MAIN; menuChanged = true;
-            DEBUG_PRINTF("[MEDEVAC] Target set: %s\n", medevacTargetNode);
+            DEBUG_PRINTF("[TAC] Target set: %s\n", tacTargetNode);
         }
         return;
     }
@@ -1357,9 +1357,9 @@ static void handleButtonEvent(AceButton* button, uint8_t eventType, uint8_t) {
                 // INBOX
                 nextMenu = MENU_INBOX; menuChanged = true;
             } else if (menuCursor == menuCount - 2) {
-                // MEDEVAC CFG
-                menuCursor = (medevacMode == MEDEVAC_TX_BROADCAST) ? 0 : 1;
-                nextMenu = MENU_MEDEVAC_CFG; menuChanged = true;
+                // TAC MSG CFG
+                menuCursor = (tacTxMode == TAC_TX_BROADCAST) ? 0 : 1;
+                nextMenu = MENU_TAC_CFG; menuChanged = true;
             } else {
                 // Standard tactical messages
                 MessageEvent txMsg;
@@ -1461,22 +1461,22 @@ void setup() {
     config->setEventHandler(handleButtonEvent);
     config->setFeature(ButtonConfig::kFeatureClick);
 
-    // Initialize 9-Line MEDEVAC buttons
+    // Initialize 9 Tactical buttons
     // GPIO 34 is input-only (no internal pull-up) — requires external pull-up resistor.
     // All other MEDEVAC GPIOs use INPUT_PULLUP (internal pull-up, active LOW).
-    static ButtonConfig medevacBtnConfig;
-    medevacBtnConfig.setEventHandler(handleMedevacButtonEvent);
-    medevacBtnConfig.setFeature(ButtonConfig::kFeatureClick);
+    static ButtonConfig tacBtnConfig;
+    tacBtnConfig.setEventHandler(handleTacButtonEvent);
+    tacBtnConfig.setFeature(ButtonConfig::kFeatureClick);
     for (int i = 0; i < 9; i++) {
-        int pin = MEDEVAC_BTN_PINS[i];
+        int pin = TAC_BTN_PINS[i];
         if (pin == 34) {
             pinMode(pin, INPUT); // GPIO 34: input-only, external pull-up required
         } else {
             pinMode(pin, INPUT_PULLUP);
         }
-        btnMedevac[i].setButtonConfig(&medevacBtnConfig);
+        btnTac[i].setButtonConfig(&tacBtnConfig);
     }
-    DEBUG_PRINTLN("[Setup] 9-Line MEDEVAC buttons initialized.");
+    DEBUG_PRINTLN("[Setup] 9 Tactical buttons initialized.");
     lastActivityMs = millis(); // Start the idle timer from boot
 #endif
 }
@@ -1515,7 +1515,7 @@ void loop() {
     btnUp.check();
     btnDown.check();
     btnSel.check();
-    for (int i = 0; i < 9; i++) btnMedevac[i].check();
+    for (int i = 0; i < 9; i++) btnTac[i].check();
 
     if (screensaverActive) {
         // Still check for incoming messages while screensaver is on
@@ -1581,14 +1581,14 @@ void loop() {
                 composePending = true;
                 composeDoneMs = millis();
                 break;
-            case MENU_MEDEVAC_CFG:
-                drawMedevacCfgMenu();
+            case MENU_TAC_CFG:
+                drawTacCfgMenu();
                 break;
-            case MENU_MEDEVAC_TARGET:
-                drawMedevacTargetMenu();
+            case MENU_TAC_TARGET:
+                drawTacTargetMenu();
                 break;
-            case MENU_MEDEVAC_SENT:
-                drawMedevacSent(lastMedevacLineSent);
+            case MENU_TAC_SENT:
+                drawTacSent(lastTacBtnSent);
                 composePending = true;
                 composeDoneMs = millis();
                 break;

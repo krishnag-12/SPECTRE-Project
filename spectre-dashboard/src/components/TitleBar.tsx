@@ -165,28 +165,6 @@ export default function TitleBar({ connected }: Props) {
 
       <div style={styles.rightSection}>
         <span style={styles.clock}>{time}</span>
-        {['minimize', 'maximize', 'close'].map((action) => {
-          const btnStyles = {
-            minimize: styles.minimizeBtn,
-            maximize: styles.maximizeBtn,
-            close: styles.closeBtn,
-          };
-          return (
-            <button
-              key={action}
-              id={`titlebar-btn-${action}`}
-              style={{
-                ...styles.windowBtn,
-                ...btnStyles[action],
-                ...(hoveredBtn === action ? styles.windowBtnHover : {}),
-              }}
-              onClick={() => handleWindowAction(action)}
-              onMouseEnter={() => setHoveredBtn(action)}
-              onMouseLeave={() => setHoveredBtn(null)}
-              title={action.charAt(0).toUpperCase() + action.slice(1)}
-            />
-          );
-        })}
       </div>
     </div>
   );

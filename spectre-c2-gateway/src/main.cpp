@@ -325,35 +325,35 @@ void taskGatewayRadio(void* pvParameters) {
                         jsonEscape(plaintext, escapedPayload, sizeof(escapedPayload));
                         const char* packetNodeId = rxPkt->nodeId[0] != '\0' ? rxPkt->nodeId : "Unknown-0";
 
-                        // Detect MEDEVAC messages (payload starts with "MEDEVAC:L")
-                        bool isMedevac = (strncmp(plaintext, "MEDEVAC:L", 9) == 0
-                                          && plaintext[9] >= '1' && plaintext[9] <= '9');
-                        if (isMedevac) {
-                            uint8_t medevacLine = plaintext[9] - '0';
-                            char modeChar = (strlen(plaintext) > 11) ? plaintext[11] : 'B';
+                        // Detect Tactical messages (payload starts with "TAC:L")
+                        bool isTac = (strncmp(plaintext, "TAC:L", 5) == 0
+                                          && plaintext[5] >= '1' && plaintext[5] <= '9');
+                        if (isTac) {
+                            uint8_t tacLine = plaintext[5] - '0';
+                            char modeChar = (strlen(plaintext) > 7) ? plaintext[7] : 'B';
                             // Extract target (between 3rd and 4th ':')
-                            char medevacTarget[16] = "*";
-                            if (strlen(plaintext) > 13) {
-                                const char* tStart = plaintext + 13;
+                            char tacTarget[16] = "*";
+                            if (strlen(plaintext) > 9) {
+                                const char* tStart = plaintext + 9;
                                 const char* tEnd = strchr(tStart, ':');
                                 if (tEnd) {
                                     size_t tLen = (size_t)(tEnd - tStart);
                                     if (tLen > 15) tLen = 15;
-                                    strncpy(medevacTarget, tStart, tLen);
-                                    medevacTarget[tLen] = '\0';
+                                    strncpy(tacTarget, tStart, tLen);
+                                    tacTarget[tLen] = '\0';
                                 }
                             }
                             Serial.printf(
-                                "{\"kind\":\"medevac\",\"nodeId\":\"%s\",\"msgId\":%u,\"hopCount\":%u,"
-                                "\"medevacLine\":%u,\"medevacMode\":\"%c\",\"medevacTarget\":\"%s\","
+                                "{\"kind\":\"tactical\",\"nodeId\":\"%s\",\"msgId\":%u,\"hopCount\":%u,"
+                                "\"tacLine\":%u,\"tacMode\":\"%c\",\"tacTarget\":\"%s\","
                                 "\"status\":\"ACTIVE\",\"rssi\":%d,\"snr\":%.2f,"
                                 "\"payload\":\"%s\",\"timestamp\":%lu}\n",
                                 packetNodeId,
                                 (unsigned int)rxPkt->messageID,
                                 (unsigned int)rxPkt->hopCount,
-                                (unsigned int)medevacLine,
+                                (unsigned int)tacLine,
                                 modeChar,
-                                medevacTarget,
+                                tacTarget,
                                 (int)radio.getRSSI(),
                                 (double)radio.getSNR(),
                                 escapedPayload,

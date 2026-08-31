@@ -77,7 +77,7 @@ Field nodes run full UI menu state machines, send tactical alerts, and communica
    cd spectre-main
    pio run --target upload
    ```
-5. **9-Line MEDEVAC Button Wiring** (see `spectre_medevac.h` for pin definitions):
+5. **9 Tactical Quick Messages Button Wiring** (see `spectre_tactical.h` for pin definitions):
 
    | Button | Line | ESP32 GPIO | Notes |
    |--------|------|-----------|-------|
@@ -170,12 +170,12 @@ SPECTRE_MOCK=false npm run electron:dev
    - **Verify persistence (optional)**: Reboot `Alpha-1`. On boot, `dtnInitStorage()` rescans SPIFFS, so the buffered packet and its auto-incrementing file-ID sequence survive the power cycle.
    - **Reconnect / data-mule dump**: Power `Bravo-2` back on (or bring it into range). Within `DTN_DUMP_INTERVAL_MS` (5 s) of `Alpha-1` next hearing a frame from `Bravo-2`, `Alpha-1` burst-transmits the buffered packet (one per dump cycle, to respect duty cycle and FHSS hopping) and deletes the flash copy.
    - **Confirm delivery**: `Bravo-2` receives, decrypts, and displays the delayed SITREP; the buffered count on `Alpha-1` returns to zero. The payload was never decrypted while stored — COMSEC is preserved end-to-end.
-8. **9-Line MEDEVAC Transmission** (requires 9-Line MEDEVAC buttons wired on field nodes):
-   - Default mode is **BROADCAST**. Press any MEDEVAC button (L1–L9) to immediately transmit that MEDEVAC line.
-   - OLED shows `MEDEVAC LINE <N> / <LABEL> / TX BROADCAST / SENT` confirmation for 1.2s.
-   - **Verify on C2 Gateway**: The Base Station outputs MEDEVAC-enriched JSON:
-     `{"kind":"medevac","nodeId":"Alpha-1","msgId":209,"hopCount":3,"medevacLine":1,"medevacMode":"B","medevacTarget":"*","status":"ACTIVE","rssi":-65,"snr":9.5,"payload":"MEDEVAC:L1:B:*:GRID TBD","timestamp":...}`
-   - **Individual mode**: Navigate to `MEDEVAC CFG` on the main menu, select `INDIVIDUAL`, choose a target node. Subsequent MEDEVAC button presses address that specific node while the C2 gateway still receives the message.
+8. **9 Tactical Quick Messages Transmission** (requires 9 Tactical Quick Messages buttons wired on field nodes):
+   - Default mode is **BROADCAST**. Press any Tactical Quick Message button (L1–L9) to immediately transmit that Tactical Quick Message line.
+   - OLED shows `Tactical Quick Message LINE <N> / <LABEL> / TX BROADCAST / SENT` confirmation for 1.2s.
+   - **Verify on C2 Gateway**: The Base Station outputs Tactical Quick Message-enriched JSON:
+     `{"kind":"tactical","nodeId":"Alpha-1","msgId":209,"hopCount":3,"tacticalLine":1,"tacticalMode":"B","tacticalTarget":"*","status":"ACTIVE","rssi":-65,"snr":9.5,"payload":"Tactical Quick Message:L1:B:*:GRID TBD","timestamp":...}`
+   - **Individual mode**: Navigate to `Tactical Quick Message CFG` on the main menu, select `INDIVIDUAL`, choose a target node. Subsequent Tactical Quick Message button presses address that specific node while the C2 gateway still receives the message.
 
 ---
 

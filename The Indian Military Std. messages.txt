@@ -1,0 +1,53 @@
+The Indian Military (Army, Navy, and Air Force) largely inherits and adapts its standard Radio Telephony (RT) procedures from the British Armed Forces and Commonwealth systems, aligning heavily with international standards. However, it infuses unique Indian localized terms, Hindi jargon, and operational structures specific to its geographic contexts (like high-altitude warfare or counter-insurgency). [1, 2] 
+The terms and formats used by the Indian Armed Forces for these specific scenarios are outlined below:
+## 🚨 1. Help & Distress Situations
+
+* 
+* "CONTACT": Just like Western forces, if an Indian Army column is ambushed or engages the enemy, the immediate shout over the radio is "Contact, Contact, Contact". This is instantly followed by the clock-direction or grid. [3] 
+* "SATHI GHAYAL" (Buddy Wounded / Casualty): In internal communication and infantry operations (especially in counter-terrorism settings like Jammu & Kashmir), units frequently use Hindi terms to blend into local secure chatter. If a soldier is hurt, the quick voice transmission translates heavily to indicating a Ghayal (wounded) or Veer Gati (martyred) status.
+* "MAYDAY": The Indian Air Force (IAF) and Indian Navy use the standard triple "Mayday" for extreme, life-threatening airborne or maritime emergencies.
+* 
+
+## 🚁 2. Extraction & Pickup (Exfiltration)
+
+* 
+* "CHOPPER COMING IN" / "HELI-DROP": Due to frequent operations in high-altitude environments like Siachen or Kargil, casualty evacuation (CASEVAC) or troop extraction is heavily helicopter-dependent.
+* "LZ CLEAR" / "LZ HOT": The Indian military uses standard English definitions for the Landing Zone (LZ). Instead of "Cherry" or "Ice", Indian pilots and ground operators usually communicate strictly via "LZ Secure/Clear" or "LZ Comrpomised/Hot." [4] 
+* "BUDDY SYSTEM" Extraction: Ground troops explicitly coordinate who pulls out first by using terms like "Covering Fire Matrix" rather than specialized brevity slang.
+* 
+
+## 👁️ 3. Enemy Spotted (Visual Contacts)
+
+* 
+* "DUSHMAN DEKHA" / "TARGET SPOTTED": While official logs maintain English, field radio sets during active operations often feature direct Hindi phrases like "Dushman" (Enemy) or "Khabar" (Information/Intelligence).
+* "LOOK-OUT" Reports: Instead of the exact Western SALUTE template, the Indian Army traditionally uses standard observation logs that identify:
+1. Sankhya (Strength/Number)
+   2. Harkat (Activity/Movement)
+   3. Sthan (Location)
+   4. Hathiyar (Weaponry/Equipment) [5] 
+* "BOGEY" & "BANDIT": The Indian Air Force relies identically on these standard global definitions when intercepting unidentified or hostile aircraft along the borders. [4] 
+* 
+
+------------------------------
+## Standard Prowords Used Daily by Indian Troops
+The baseline communication terms used across all Indian military radio nets include:
+
+* 
+* "ROGER": Message received and understood.
+* "WILCO": Will comply (I understand and am carrying out the order).
+* "OVER": I have finished speaking and am awaiting your reply.
+* "OUT": Conversation ended, no reply expected. (Crucial rule: An operator never says "Over and Out" together).
+* "SITREP": Situation Report. Commanders routinely call field units demanding a "Sitrep." [6, 7] 
+* 
+
+Are you researching this for a creative writing project, a military simulation/game, or looking into the secure technical hardware (like the Indian Army's new SAMBHAV encrypted network) that hosts these messages? Let me know so I can tailor the next details! [8, 9] 
+
+[1] [https://www.instagram.com](https://www.instagram.com/reel/DJ9EjKTTUL2/)
+[2] [https://defencedirecteducation.com](https://defencedirecteducation.com/2021/09/16/military-communication-codes-for-alphabets/)
+[3] [https://www.quora.com](https://www.quora.com/Does-%E2%80%9Ccontact%E2%80%9D-in-military-radio-communication-means-that-transmitting-unit-is-under-fire-from-hostiles-or-that-transmitting-unit-detected-hostiles)
+[4] [https://www.scribd.com](https://www.scribd.com/document/220336/Military-Brevity-Code)
+[5] [https://www.reddit.com](https://www.reddit.com/r/IWantToLearn/comments/2f3dec/iwtl_military_jargontactial_speak_oscar_mike/)
+[6] [https://www.marathonwatch.com](https://www.marathonwatch.com/blogs/marathon-minutes/common-military-code-words-role-of-tactical-gear)
+[7] [https://www.scribd.com](https://www.scribd.com/document/478275368/Proword)
+[8] [https://www.youtube.com](https://www.youtube.com/watch?v=8heh0PW1YzI)
+[9] [https://chakranewz.com](https://chakranewz.com/insights/indian-army-rsquo-s-own-technology-initiatives-a-never-acknowledged-truth)

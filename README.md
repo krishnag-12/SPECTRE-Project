@@ -51,8 +51,8 @@ The 0.96" SSD1306 OLED display serves as the field operator's primary situationa
 
 The screensaver logic is defined in `spectre_logo.h` and integrated into the Core 1 UI loop. It respects `C2_BRIDGE_MODE` (no OLED on the headless gateway) and `composePending` state (no screensaver while a TX confirmation is on screen).
 
-### 9-Line MEDEVAC Messaging
-S.P.E.C.T.R.E. includes a dedicated **9-Line MEDEVAC** (Medical Evacuation Request) system compatible with Indian military operational procedures. Nine physical push buttons map directly to the nine standard MEDEVAC lines:
+### 9 Tactical Quick Messages Messaging
+S.P.E.C.T.R.E. includes a dedicated **9 Tactical Quick Messages** (Medical Evacuation Request) system compatible with Indian military operational procedures. Nine physical push buttons map directly to the nine standard Tactical Quick Message lines:
 
 | Button | Line | Content |
 |--------|------|---------|
@@ -66,12 +66,12 @@ S.P.E.C.T.R.E. includes a dedicated **9-Line MEDEVAC** (Medical Evacuation Reque
 | L8 | Nationality | Patient nationality and status |
 | L9 | CBRN/Terrain | CBRN contamination / terrain description |
 
-**Pressing a MEDEVAC button instantly transmits that line** — no manual composition required. Two transmission modes are supported:
+**Pressing a Tactical Quick Message button instantly transmits that line** — no manual composition required. Two transmission modes are supported:
 
-*   **Broadcast (default):** MEDEVAC line is sent to all mesh nodes and the C2 gateway.
-*   **Individual:** MEDEVAC line is addressed to a selected target node; the C2 gateway still receives every message regardless of mode.
+*   **Broadcast (default):** Tactical Quick Message line is sent to all mesh nodes and the C2 gateway.
+*   **Individual:** Tactical Quick Message line is addressed to a selected target node; the C2 gateway still receives every message regardless of mode.
 
-MEDEVAC payloads use the standard `LoRaPacket` structure with message IDs `0xD1–0xD9` and a structured payload format: `MEDEVAC:L<n>:<B|I>:<target>:<data>`. The C2 gateway automatically detects MEDEVAC messages and emits enriched JSON with `kind`, `medevacLine`, `medevacMode`, and `medevacTarget` fields.
+Tactical Quick Message payloads use the standard `LoRaPacket` structure with message IDs `0xD1–0xD9` and a structured payload format: `Tactical Quick Message:L<n>:<B|I>:<target>:<data>`. The C2 gateway automatically detects Tactical Quick Message messages and emits enriched JSON with `kind`, `tacticalLine`, `tacticalMode`, and `tacticalTarget` fields.
 
 ## 🚀 Getting Started
 
