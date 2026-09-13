@@ -91,15 +91,38 @@ Based on an architectural review of the `spectre-main` and `spectre-dashboard` d
 #### [MODIFY] `spectre-c2-gateway/src/main.cpp`
 - [x] **Tactical-Aware JSON:** Gateway detects Tactical payloads and emits enriched JSON with `kind:"tactical"`, `tacLine`, `tacMode`, `tacTarget` fields. Non-tactical messages unchanged.
 
-### Sprint D: Edge-AI Jamming Detection & Anti-Tamper
+### Sprint D: Edge-AI Jamming Detection & Anti-Tamper — ✅ COMPLETE
 
-#### [NEW] `spectre-main/src/ml_anomaly.cpp`
-- Train a lightweight Isolation Forest model (e.g., via Edge Impulse) using nominal RSSI and SNR data.
-- Deploy the C++ inference engine to the ESP32 to flag anomalous RF noise floors indicative of broadband jamming.
+#### [NEW] `rf-jamming-detection/export_esp32_model.py`
+- [x] **Model Export Pipeline:** Generates synthetic RF telemetry (108k samples, 3 nodes), injects barrage/spot/pulse jamming attacks, engineers 8 reduced features, trains Isolation Forest (100 trees, max_samples=256), exports as C header arrays.
+- [x] **8 Reduced Features:** rssi, snr, noise_floor, rssi_delta, noise_floor_delta, rssi_roll_mean_10, rssi_roll_std_10, noise_floor_roll_std_10.
+- [x] **Model Performance:** Accuracy 0.9012, Precision 0.6257, Recall 0.9074, F1 0.7407, ROC AUC 0.9585.
+- [x] **Validation:** Exported C model verified against Python inference (0 out-of-range scores).
 
-#### [MODIFY] `spectre-main/src/main.cpp`
-- **Zeroization Interrupt:** Wire the "panic switch" GPIO pin to an NMI (Non-Maskable Interrupt).
-- The ISR must instantly overwrite the `AES_KEY` array and `mbedtls` contexts with random noise, effectively bricking the device's COMSEC capabilities upon physical compromise.
+#### [NEW] `spectre-c2-gateway/src/if_model_data.h`
+- [x] **Auto-generated model data:** 100 IF trees (max 259 nodes/tree), scaler mean/std arrays, IFNode struct, c(n) normalization constant. ~827 KB header.
+
+#### [NEW] `spectre-c2-gateway/src/anomaly_engine.h`
+- [x] **RingBuffer<float, 10>:** Fixed-size circular buffer for rolling statistics.
+- [x] **FeatureExtractor:** Maintains ring buffers for RSSI and noise_floor, computes 8-feature vector.
+- [x] **StandardScaler:** Normalizes features using embedded mean/std from model export.
+- [x] **IsolationForest:** Iterative tree traversal (no recursion), averages path length, outputs anomaly score 0.0–1.0.
+- [x] **EWMA Smoothing:** α=0.3 exponential smoothing to reduce score jitter.
+- [x] **Cold-start guard:** Returns 0.0 until ring buffer has ≥10 samples.
+
+#### [NEW] `spectre-c2-gateway/src/zeroize.h`
+- [x] **Panic GPIO ISR:** GPIO 4, INPUT_PULLUP, FALLING edge interrupt.
+- [x] **Wipe sequence:** memset AES_KEY → esp_fill_random overwrite → keyExchangeComplete=false → mbedtls_ecdh_free → mbedtls_ctr_drbg_free → mbedtls_entropy_free.
+- [x] **IRAM_ATTR:** ISR runs from IRAM, not flash cache. < 1ms execution.
+
+#### [MODIFY] `spectre-c2-gateway/src/main.cpp`
+- [x] **Includes:** Added `anomaly_engine.h` and `zeroize.h`.
+- [x] **AnomalyEngine global:** Instantiated as `static AnomalyEngine anomalyEngine`.
+- [x] **Live anomalyScore:** All 3 JSON emission paths (key-exchange, tactical, regular) now call `anomalyEngine.computeScore(rssi, snr)` instead of hardcoded 0.0.
+- [x] **Tactical JSON fix:** Added missing `anomalyScore`, `posX`, `posY` fields for schema consistency.
+- [x] **Zeroization init:** `initZeroize(ZEROIZE_PIN)` called in `setup()` after crypto init.
+- [x] **AES_KEY/keyExchangeComplete:** Removed `static` qualifier for `extern` access from zeroize.h.
+
 
 ---
 

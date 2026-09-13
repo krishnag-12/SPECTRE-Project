@@ -251,7 +251,59 @@ S.P.E.C.T.R.E. implements a **Store-Carry-Forward** protocol that guarantees eve
 
 ---
 
-## 11. Device Modes & Compile-Time Configuration
+## 11. EW Threat Detection (Edge-AI Jamming Detection)
+
+The C2 gateway runs a real-time **Isolation Forest anomaly detection engine** on every received packet. The engine analyzes 8 RF features (RSSI, SNR, noise floor, deltas, and rolling statistics) to compute an `anomalyScore` between 0.0 and 1.0.
+
+### Dashboard Threat Levels
+
+| anomalyScore | Level | Dashboard Color | Meaning |
+|--------------|-------|-----------------|---------|
+| 0.0 – 0.4 | CLEAR | Green | Normal RF environment |
+| 0.4 – 0.7 | LOW | Olive | Minor RF anomaly detected |
+| 0.7 – 0.85 | MEDIUM | Amber | Probable jamming — investigate |
+| > 0.85 | HIGH | Red | Active jamming — take action |
+
+### EW THREAT Alert
+
+When `anomalyScore > 0.7`, the dashboard automatically triggers an **EW THREAT** alert with the affected node ID, anomaly score, and RSSI reading.
+
+### Cold Start
+
+The anomaly engine returns `0.0` for the first 10 received packets while it populates its statistical ring buffer. This prevents false alarms during gateway boot.
+
+**No operator action is required.** The anomaly engine runs autonomously on the gateway.
+
+---
+
+## 12. Anti-Tamper Zeroization
+
+S.P.E.C.T.R.E. includes a hardware **panic switch** for emergency cryptographic material destruction.
+
+### How It Works
+
+1. A momentary push button is wired between **GPIO 4** and **GND** on the C2 gateway.
+2. When pressed, the button triggers a hardware interrupt that **instantly wipes all cryptographic keys**:
+   - AES-256 symmetric key (overwritten with random noise)
+   - ECDH ephemeral key context (freed)
+   - CSPRNG state (destroyed)
+   - Key exchange flag set to `false`
+3. After zeroization, the gateway **cannot decrypt any further traffic** until it is reflashed.
+
+### Wiring
+
+| Component | Connection |
+|-----------|-----------|
+| Button Pin 1 | GPIO 4 on ESP32 |
+| Button Pin 2 | GND |
+
+The GPIO uses `INPUT_PULLUP` — no external resistor is needed.
+
+> **⚠️ WARNING:** Zeroization is **irreversible** without reflashing the firmware. Use only in physical compromise or capture scenarios.
+
+---
+
+## 13. Device Modes & Compile-Time Configuration
 
 The firmware behavior is controlled by `#define` flags at the top of `spectre-main/src/main.cpp`:
 
@@ -265,7 +317,7 @@ The firmware behavior is controlled by `#define` flags at the top of `spectre-ma
 
 ---
 
-## 12. Hardware Pin Wiring Reference
+## 14. Hardware Pin Wiring Reference
 
 ### Field Node (spectre-main)
 
@@ -304,7 +356,7 @@ The firmware behavior is controlled by `#define` flags at the top of `spectre-ma
 
 ---
 
-## 13. Status Bar Reference
+## 15. Status Bar Reference
 
 The top bar of the OLED display shows system status:
 
@@ -318,7 +370,7 @@ The top bar of the OLED display shows system status:
 
 ---
 
-## 14. Troubleshooting
+## 16. Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
@@ -332,7 +384,7 @@ The top bar of the OLED display shows system status:
 
 ---
 
-## 15. Safety & Legal Notice
+## 17. Safety & Legal Notice
 
 - S.P.E.C.T.R.E. operates on the **433 MHz ISM band** which is subject to local spectrum regulations.
 - **1% duty cycle** restrictions apply in civilian deployments. The FHSS implementation distributes transmissions across 15 channels to maximize legal throughput.

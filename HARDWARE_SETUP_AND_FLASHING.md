@@ -113,6 +113,29 @@ The diagnostic testbench node monitors airwaves, handles automatic ECDH key exch
 
 ---
 
+### Device 4: Dedicated C2 Gateway (spectre-c2-gateway)
+
+The dedicated C2 gateway firmware runs a headless (no OLED, no buttons) ESP32 that bridges the LoRa mesh to the TCC dashboard over USB serial. It includes the **Edge-AI jamming detection engine** and **anti-tamper zeroization**.
+
+1. Connect the gateway ESP32 to your PC via USB.
+2. Flash using PlatformIO:
+   ```bash
+   cd spectre-c2-gateway
+   pio run --target upload
+   ```
+3. **Zeroization Panic Button Wiring (Sprint D — Anti-Tamper):**
+
+   | Component | Connection | Notes |
+   |-----------|-----------|-------|
+   | Button Pin 1 | GPIO 4 | `INPUT_PULLUP`, active LOW |
+   | Button Pin 2 | GND | Common ground |
+
+   Wire a momentary push button between GPIO 4 and GND. When pressed, the ISR instantly wipes all cryptographic keys (AES-256, ECDH, CSPRNG state). **This is irreversible without reflashing.**
+
+   > **⚠️ WARNING:** The zeroization button is for emergency use only. Once triggered, the gateway cannot decrypt any further traffic.
+
+---
+
 ## 4. Running the SPECTRE TCC Dashboard
 
 ### Step 1: Install Dependencies

@@ -1,7 +1,8 @@
 // =============================================================================
-// S.P.E.C.T.R.E. - DEDICATED C2 GATEWAY FIRMWARE (Sprint A)
+// S.P.E.C.T.R.E. - DEDICATED C2 GATEWAY FIRMWARE (Sprint A + D)
 // Headless node for Commander's Dashboard.
-// Features: JSON Telemetry Bridge, Command Ingestion, AES-256 GCM.
+// Features: JSON Telemetry Bridge, Command Ingestion, AES-256 GCM,
+//           Edge-AI Jamming Detection (IF), Anti-Tamper Zeroization.
 // =============================================================================
 
 #include <Arduino.h>
@@ -13,6 +14,8 @@
 #include "mbedtls/entropy.h"
 #include "mbedtls/ctr_drbg.h"
 #include "mbedtls/sha256.h"
+#include "anomaly_engine.h"
+#include "zeroize.h"
 
 #define NODE_ID "Gateway-1" // Identifier for the dashboard's own node
 
@@ -98,8 +101,11 @@ TaskHandle_t  taskRadioHandle;
 SX1278 radio = new Module(LORA_NSS_PIN, LORA_DIO0_PIN, LORA_RESET_PIN, LORA_DIO1_PIN);
 volatile bool rxFlag = false;
 
-static uint8_t AES_KEY[32] = {0}; 
-static bool keyExchangeComplete = false;
+uint8_t AES_KEY[32] = {0}; 
+bool keyExchangeComplete = false;
+
+// Sprint D: Edge-AI Anomaly Detection Engine
+static AnomalyEngine anomalyEngine;
 
 mbedtls_ecdh_context ecdh_ctx;
 mbedtls_entropy_context entropy;
@@ -309,9 +315,12 @@ void taskGatewayRadio(void* pvParameters) {
                     LoRaKeyExchangePacket* rxKeyPkt = (LoRaKeyExchangePacket*)buf;
                     deriveSharedAESKey(rxKeyPkt->publicKey, rxKeyPkt->pubKeyLen);
                     
+                    float keRssi = (float)radio.getRSSI();
+                    float keSnr  = (float)radio.getSNR();
+                    float keAnom = anomalyEngine.computeScore(keRssi, keSnr);
                     Serial.printf(
-                        "{\"nodeId\":\"%s\",\"msgId\":0,\"hopCount\":0,\"status\":\"ARMED\",\"posX\":0.0,\"posY\":0.0,\"rssi\":%d,\"snr\":%.2f,\"anomalyScore\":0.0,\"payload\":\"%s\",\"timestamp\":%lu}\n",
-                        NODE_ID, (int)radio.getRSSI(), (double)radio.getSNR(), "SYS: Secure Key Exchanged!", (unsigned long)(millis()/1000)
+                        "{\"nodeId\":\"%s\",\"msgId\":0,\"hopCount\":0,\"status\":\"ARMED\",\"posX\":0.0,\"posY\":0.0,\"rssi\":%d,\"snr\":%.2f,\"anomalyScore\":%.4f,\"payload\":\"%s\",\"timestamp\":%lu}\n",
+                        NODE_ID, (int)keRssi, (double)keSnr, (double)keAnom, "SYS: Secure Key Exchanged!", (unsigned long)(millis()/1000)
                     );
                 } 
                 else if (buf[0] == 0xAB) {
@@ -343,30 +352,38 @@ void taskGatewayRadio(void* pvParameters) {
                                     tacTarget[tLen] = '\0';
                                 }
                             }
+                            float tacRssi = (float)radio.getRSSI();
+                            float tacSnr  = (float)radio.getSNR();
+                            float tacAnom = anomalyEngine.computeScore(tacRssi, tacSnr);
                             Serial.printf(
                                 "{\"kind\":\"tactical\",\"nodeId\":\"%s\",\"msgId\":%u,\"hopCount\":%u,"
                                 "\"tacLine\":%u,\"tacMode\":\"%c\",\"tacTarget\":\"%s\","
-                                "\"status\":\"ACTIVE\",\"rssi\":%d,\"snr\":%.2f,"
-                                "\"payload\":\"%s\",\"timestamp\":%lu}\n",
+                                "\"status\":\"ACTIVE\",\"posX\":0.0,\"posY\":0.0,\"rssi\":%d,\"snr\":%.2f,"
+                                "\"anomalyScore\":%.4f,\"payload\":\"%s\",\"timestamp\":%lu}\n",
                                 packetNodeId,
                                 (unsigned int)rxPkt->messageID,
                                 (unsigned int)rxPkt->hopCount,
                                 (unsigned int)tacLine,
                                 modeChar,
                                 tacTarget,
-                                (int)radio.getRSSI(),
-                                (double)radio.getSNR(),
+                                (int)tacRssi,
+                                (double)tacSnr,
+                                (double)tacAnom,
                                 escapedPayload,
                                 (unsigned long)(millis() / 1000)
                             );
                         } else {
+                            float rxRssi = (float)radio.getRSSI();
+                            float rxSnr  = (float)radio.getSNR();
+                            float rxAnom = anomalyEngine.computeScore(rxRssi, rxSnr);
                             Serial.printf(
-                                "{\"nodeId\":\"%s\",\"msgId\":%u,\"hopCount\":%u,\"status\":\"ACTIVE\",\"posX\":0.0,\"posY\":0.0,\"rssi\":%d,\"snr\":%.2f,\"anomalyScore\":0.0,\"payload\":\"%s\",\"timestamp\":%lu}\n",
+                                "{\"nodeId\":\"%s\",\"msgId\":%u,\"hopCount\":%u,\"status\":\"ACTIVE\",\"posX\":0.0,\"posY\":0.0,\"rssi\":%d,\"snr\":%.2f,\"anomalyScore\":%.4f,\"payload\":\"%s\",\"timestamp\":%lu}\n",
                                 packetNodeId,
                                 (unsigned int)rxPkt->messageID,
                                 (unsigned int)rxPkt->hopCount,
-                                (int)radio.getRSSI(),
-                                (double)radio.getSNR(),
+                                (int)rxRssi,
+                                (double)rxSnr,
+                                (double)rxAnom,
                                 escapedPayload,
                                 (unsigned long)(millis() / 1000)
                             );
@@ -393,6 +410,9 @@ void setup() {
     delay(1000);
     
     initCryptoAndGenerateKeys();
+
+    // Sprint D: Initialize anti-tamper zeroization ISR (GPIO 4)
+    initZeroize(ZEROIZE_PIN);
 
     txQueue = xQueueCreate(QUEUE_DEPTH, sizeof(MessageEvent));
     

@@ -17,6 +17,8 @@ By leveraging Long Range (LoRa) Chirp Spread Spectrum (CSS) modulation and a dua
 *   **Zero-Trust Cryptography (COMSEC):** Executes dynamic Elliptic-Curve Diffie-Hellman (ECDH) key exchanges on the SECP256R1 curve. Payloads are authenticated and encrypted via AES-256-GCM to prevent traffic analysis, spoofing, and replay attacks.
 *   **Cryptographic FHSS (ECCM):** Frequency-Hopping Spread Spectrum across a 15-channel pool, with the hop schedule derived from the shared AES-256 secret via a CSPRNG. Combined with CSS modulation's processing gain, this resists narrowband jamming and enables successful demodulation below the thermal noise floor.
 *   **Low Probability of Detection (LPD):** Mathematical optimization of physical layer parameters (SF7, 250 kHz Bandwidth) compresses fully encrypted tactical payloads into sub-100-millisecond transmission bursts, severely degrading adversary Radio Direction Finding (RDF) capabilities.
+*   **Edge-AI Jamming Detection (EW):** A lightweight Isolation Forest (100 trees) trained on 8 engineered RF features (RSSI, SNR, noise floor, deltas, rolling statistics) runs real-time inference on the C2 gateway. Each received packet produces an `anomalyScore` (0.0–1.0) with EWMA smoothing, enabling the dashboard to display tiered EW threat levels (LOW/MEDIUM/HIGH) and trigger automated alerts.
+*   **Anti-Tamper Zeroization:** A hardware panic switch (GPIO interrupt) instantly wipes all cryptographic material — AES-256 symmetric key, ECDH ephemeral context, CSPRNG state — with random noise overwrite, preventing cold-boot key recovery upon physical compromise.
 
 ## ⚙️ System Architecture
 
@@ -95,10 +97,10 @@ Tactical Quick Message payloads use the standard `LoRaPacket` structure with mes
 
 ## 📈 Future R&D Roadmap
 
-The current prototype is undergoing continuous evaluation to bridge the gap toward defense-readiness. Upcoming features include:
+The current prototype is undergoing continuous evaluation to bridge the gap toward defense-readiness.
 
-* [ ] **ML-Based Jamming Detection:** Edge-AI integration to detect broadband jamming signatures and autonomously optimize topological routing paths.
-* [ ] **Anti-Tamper Security:** Implementation of a Cryptographic Kill Switch (Zeroization protocol) to instantly wipe volatile AES keys and ECC architecture upon physical breach or capture.
+* [x] **ML-Based Jamming Detection:** Edge-AI Isolation Forest inference (100 trees, 8 features) on the C2 gateway computes real-time `anomalyScore` for every received packet.
+* [x] **Anti-Tamper Security:** GPIO-triggered Zeroization ISR instantly wipes AES keys, ECDH contexts, and CSPRNG state upon physical breach.
 
 ## 👥 Core Development Team
 
