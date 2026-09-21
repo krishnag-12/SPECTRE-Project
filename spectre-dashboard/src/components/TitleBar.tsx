@@ -3,12 +3,17 @@
 // =============================================================================
 
 import React, { useState, useEffect } from 'react';
+import type { SerialConnectionState } from '../webSerialBridge';
 
 interface Props {
   connected: boolean;
+  serialState: SerialConnectionState;
+  serialPort: string | null;
+  onSerialConnect: () => void;
+  onSerialDisconnect: () => void;
 }
 
-const styles = {
+const styles: Record<string, any> = {
   titleBar: {
     display: 'flex',
     alignItems: 'center',
@@ -60,7 +65,7 @@ const styles = {
   centerSection: {
     display: 'flex',
     alignItems: 'center',
-    gap: '16px',
+    gap: '12px',
   },
   statusTag: {
     fontFamily: "'JetBrains Mono', monospace",
@@ -80,6 +85,46 @@ const styles = {
     background: 'rgba(255, 0, 0, 0.1)',
     color: '#FF0000',
     border: '1px solid rgba(255, 0, 0, 0.3)',
+  },
+  statusConnecting: {
+    background: 'rgba(255, 191, 0, 0.1)',
+    color: '#FFBF00',
+    border: '1px solid rgba(255, 191, 0, 0.3)',
+  },
+  statusError: {
+    background: 'rgba(255, 68, 68, 0.15)',
+    color: '#FF4444',
+    border: '1px solid rgba(255, 68, 68, 0.3)',
+  },
+  serialBtn: {
+    fontFamily: "'JetBrains Mono', monospace",
+    fontSize: '9px',
+    fontWeight: 700,
+    letterSpacing: '1px',
+    textTransform: 'uppercase',
+    padding: '3px 12px',
+    borderRadius: '3px',
+    border: '1px solid',
+    cursor: 'pointer',
+    transition: 'all 150ms ease',
+    whiteSpace: 'nowrap',
+    WebkitAppRegion: 'no-drag',
+  },
+  connectBtn: {
+    color: '#39FF14',
+    borderColor: 'rgba(57, 255, 20, 0.4)',
+    background: 'rgba(57, 255, 20, 0.08)',
+  },
+  disconnectBtn: {
+    color: '#FF0000',
+    borderColor: 'rgba(255, 0, 0, 0.4)',
+    background: 'rgba(255, 0, 0, 0.08)',
+  },
+  portLabel: {
+    fontFamily: "'JetBrains Mono', monospace",
+    fontSize: '9px',
+    color: '#39FF14',
+    letterSpacing: '0.5px',
   },
   rightSection: {
     display: 'flex',
@@ -113,7 +158,21 @@ const styles = {
   closeBtn: { background: '#FF0000' },
 };
 
-export default function TitleBar({ connected }: Props) {
+function getStatusText(serialState: SerialConnectionState, connected: boolean): string {
+  if (serialState === 'connecting') return '◌ CONNECTING…';
+  if (serialState === 'error') return '✖ LINK ERROR';
+  if (connected || serialState === 'connected') return '● LINK ACTIVE';
+  return '○ NO LINK';
+}
+
+function getStatusStyle(serialState: SerialConnectionState, connected: boolean) {
+  if (serialState === 'connecting') return styles.statusConnecting;
+  if (serialState === 'error') return styles.statusError;
+  if (connected || serialState === 'connected') return styles.statusConnected;
+  return styles.statusDisconnected;
+}
+
+export default function TitleBar({ connected, serialState, serialPort, onSerialConnect, onSerialDisconnect }: Props) {
   const [time, setTime] = useState('');
   const [hoveredBtn, setHoveredBtn] = useState(null);
 
@@ -141,11 +200,13 @@ export default function TitleBar({ connected }: Props) {
     }
   };
 
+  const isConnected = connected || serialState === 'connected';
+
   return (
     <div style={styles.titleBar}>
       <div style={styles.leftSection}>
         <div style={styles.logo}>
-          <div style={connected ? styles.logoIcon : styles.logoIconDisconnected} />
+          <div style={isConnected ? styles.logoIcon : styles.logoIconDisconnected} />
           <span style={styles.title}>
             <span style={styles.titleAccent}>S.P.E.C.T.R.E.</span> Tactical Command Center
           </span>
@@ -156,11 +217,35 @@ export default function TitleBar({ connected }: Props) {
         <span
           style={{
             ...styles.statusTag,
-            ...(connected ? styles.statusConnected : styles.statusDisconnected),
+            ...getStatusStyle(serialState, connected),
           }}
         >
-          {connected ? '● LINK ACTIVE' : '○ NO LINK'}
+          {getStatusText(serialState, connected)}
         </span>
+
+        {/* Serial connect/disconnect button */}
+        {serialState === 'connected' ? (
+          <>
+            {serialPort && <span style={styles.portLabel}>USB</span>}
+            <button
+              style={{ ...styles.serialBtn, ...styles.disconnectBtn }}
+              onClick={onSerialDisconnect}
+            >
+              DISCONNECT
+            </button>
+          </>
+        ) : serialState === 'connecting' ? (
+          <span style={{ ...styles.serialBtn, ...styles.connectBtn, opacity: 0.5, cursor: 'wait' }}>
+            CONNECTING…
+          </span>
+        ) : (
+          <button
+            style={{ ...styles.serialBtn, ...styles.connectBtn }}
+            onClick={onSerialConnect}
+          >
+            ⚡ CONNECT
+          </button>
+        )}
       </div>
 
       <div style={styles.rightSection}>

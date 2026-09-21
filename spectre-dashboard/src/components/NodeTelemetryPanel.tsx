@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react';
 import type { TrustState } from '../types';
+import type { CommandPayload } from '../types';
 
 interface NodeRow {
   nodeId: string;
@@ -136,6 +137,33 @@ const styles: any = {
     color: '#4B5320',
     fontSize: '9px',
   },
+  killBtn: {
+    background: 'transparent',
+    border: '1px solid rgba(255, 0, 0, 0.3)',
+    borderRadius: '2px',
+    color: '#FF0000',
+    fontFamily: "'JetBrains Mono', monospace",
+    fontSize: '8px',
+    fontWeight: 700,
+    letterSpacing: '1px',
+    textTransform: 'uppercase',
+    padding: '2px 6px',
+    cursor: 'pointer',
+    transition: 'all 150ms ease',
+    whiteSpace: 'nowrap',
+  },
+  killBtnConfirm: {
+    background: 'rgba(255, 0, 0, 0.15)',
+    border: '1px solid #FF0000',
+    color: '#FF3333',
+    animation: 'pulse 0.8s ease infinite',
+  },
+  killBtnDisabled: {
+    opacity: 0.2,
+    cursor: 'not-allowed',
+    border: '1px solid #3A3A3A',
+    color: '#3A3A3A',
+  },
   // ---- Event Log Section ----
   logSection: {
     borderTop: '1px solid #2A2A2A',
@@ -201,12 +229,14 @@ interface Props {
   nodes: NodeRow[];
   selectedNodeId: string | null;
   onSelectNode: (nodeId: string) => void;
+  onSendCommand: (command: CommandPayload) => void;
   eventLog: EventEntry[];
 }
 
-export default function NodeTelemetryPanel({ nodes, selectedNodeId, onSelectNode, eventLog }: Props) {
+export default function NodeTelemetryPanel({ nodes, selectedNodeId, onSelectNode, onSendCommand, eventLog }: Props) {
   const [hoveredRow, setHoveredRow] = useState(null);
   const [logExpanded, setLogExpanded] = useState(true);
+  const [confirmKill, setConfirmKill] = useState<string | null>(null);
 
   return (
     <div style={styles.container}>
@@ -229,6 +259,7 @@ export default function NodeTelemetryPanel({ nodes, selectedNodeId, onSelectNode
               <th style={styles.th}>RSSI</th>
               <th style={styles.th}>EW Threat</th>
               <th style={styles.th}>Trust</th>
+              <th style={{...styles.th, textAlign: 'center'}}>ACT</th>
             </tr>
           </thead>
           <tbody>
@@ -316,6 +347,39 @@ export default function NodeTelemetryPanel({ nodes, selectedNodeId, onSelectNode
                     }}>
                       {node.trustState === 'trusted' ? 'TRUSTED' : 'PENDING'}
                     </span>
+                  </td>
+                  <td style={{...styles.td, textAlign: 'center'}}>
+                    {(() => {
+                      const isKillDisabled = isZeroized || isCompromised || contactLost;
+                      const isConfirming = confirmKill === node.nodeId;
+                      if (isKillDisabled) {
+                        return (
+                          <span style={{...styles.killBtn, ...styles.killBtnDisabled}}>KILL</span>
+                        );
+                      }
+                      return (
+                        <button
+                          style={{
+                            ...styles.killBtn,
+                            ...(isConfirming ? styles.killBtnConfirm : {}),
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isConfirming) {
+                              onSendCommand({ type: 'ZERO', nodeId: node.nodeId });
+                              setConfirmKill(null);
+                            } else {
+                              setConfirmKill(node.nodeId);
+                              // Auto-cancel confirmation after 3 seconds
+                              setTimeout(() => setConfirmKill((prev) => prev === node.nodeId ? null : prev), 3000);
+                            }
+                          }}
+                          title={isConfirming ? 'Click again to confirm zeroization' : 'Zeroize this node'}
+                        >
+                          {isConfirming ? '⚠ CONFIRM' : 'KILL'}
+                        </button>
+                      );
+                    })()}
                   </td>
                 </tr>
               );

@@ -269,13 +269,7 @@ AceButton btnDown(BTN_DOWN_PIN);
 AceButton btnSel(BTN_SEL_PIN);
 
 // 9 Tactical Quick Message buttons (see spectre_tactical.h for pin mapping)
-AceButton btnTac[9] = {
-    AceButton(TAC_BTN_L1_PIN), AceButton(TAC_BTN_L2_PIN),
-    AceButton(TAC_BTN_L3_PIN), AceButton(TAC_BTN_L4_PIN),
-    AceButton(TAC_BTN_L5_PIN), AceButton(TAC_BTN_L6_PIN),
-    AceButton(TAC_BTN_L7_PIN), AceButton(TAC_BTN_L8_PIN),
-    AceButton(TAC_BTN_L9_PIN)
-};
+AceButton btnTac[9];
 
 volatile bool rxFlag    = false;
 volatile bool cadDoneFlag = false;
@@ -1027,6 +1021,47 @@ void taskRadioAndCrypto(void* pvParameters) {
                         dtnUpdateNodePresence(senderNodeId);
 #endif
 
+                        // ─── REMOTE ZEROIZATION HANDLER ─────────────────
+                        // Check if this is a CMD:ZERO targeting THIS node.
+                        // Format: "CMD:ZERO:Alpha-1" — only zeroize if the
+                        // target node ID matches our own NODE_ID.
+                        if (strncmp(inMsg.payload, "CMD:ZERO:", 9) == 0) {
+                            const char* targetId = inMsg.payload + 9;
+                            if (strcmp(targetId, NODE_ID) == 0) {
+                                // === ZEROIZE THIS DEVICE ===
+                                // 1. Wipe AES-256 symmetric key
+                                memset(AES_KEY, 0, 32);
+                                esp_fill_random(AES_KEY, 32);
+                                // 2. Block further decryption
+                                keyExchangeComplete = false;
+                                // 3. Destroy ECDH ephemeral key context
+                                mbedtls_ecdh_free(&ecdh_ctx);
+                                // 4. Destroy CSPRNG state
+                                mbedtls_ctr_drbg_free(&ctr_drbg);
+                                mbedtls_entropy_free(&entropy);
+
+#if !C2_BRIDGE_MODE
+                                // Show ZEROIZED on OLED
+                                display.clearDisplay();
+                                display.fillRect(0, 0, 128, 64, SSD1306_WHITE);
+                                display.setTextColor(SSD1306_BLACK);
+                                display.setTextSize(2);
+                                display.setCursor(4, 8);
+                                display.print("ZEROIZED");
+                                display.setTextSize(1);
+                                display.setCursor(10, 34);
+                                display.print("KEYS DESTROYED");
+                                display.setCursor(14, 48);
+                                display.print("REFLASH REQUIRED");
+                                display.display();
+#endif
+                                // Halt forever — device is bricked
+                                while (true) { vTaskDelay(1000 / portTICK_PERIOD_MS); }
+                            }
+                            // If target is a different node, fall through to relay
+                        }
+                        // ─── END REMOTE ZEROIZATION ─────────────────────
+
                         xQueueSend(rxQueue, &inMsg, 0);
 #if C2_BRIDGE_MODE
                         char escapedPayload[MAX_PAYLOAD_LEN * 2];
@@ -1257,6 +1292,26 @@ static void drawTacTargetMenu() {
     display.display();
 }
 
+static uint32_t composeDoneMs = 0;
+static bool     composePending = false;
+
+// Idle / screensaver state (Sprint C+ polish)
+// After IDLE_TIMEOUT_MS of no button presses or RX messages,
+// the SPECTRE logo screensaver is displayed. Any activity wakes it.
+#define IDLE_TIMEOUT_MS   30000   // 30 seconds of inactivity
+static uint32_t lastActivityMs   = 0;
+static bool     screensaverActive = false;
+
+static void resetIdleTimer() {
+    lastActivityMs = millis();
+    if (screensaverActive) {
+        screensaverActive = false;
+        // Wake: redraw whatever screen was showing before the screensaver
+        needRedraw = true;
+        if (currentMenu == MENU_MAIN) drawMainMenu();
+    }
+}
+
 // =============================================================================
 // TACTICAL BUTTON HANDLER — 9 dedicated quick-message buttons
 // =============================================================================
@@ -1382,25 +1437,7 @@ static void handleButtonEvent(AceButton* button, uint8_t eventType, uint8_t) {
 // NATIVE CORE 1: SETUP & MAIN UI LOOP
 // =============================================================================
 
-static uint32_t composeDoneMs = 0;
-static bool     composePending = false;
 
-// Idle / screensaver state (Sprint C+ polish)
-// After IDLE_TIMEOUT_MS of no button presses or RX messages,
-// the SPECTRE logo screensaver is displayed. Any activity wakes it.
-#define IDLE_TIMEOUT_MS   30000   // 30 seconds of inactivity
-static uint32_t lastActivityMs   = 0;
-static bool     screensaverActive = false;
-
-static void resetIdleTimer() {
-    lastActivityMs = millis();
-    if (screensaverActive) {
-        screensaverActive = false;
-        // Wake: redraw whatever screen was showing before the screensaver
-        needRedraw = true;
-        if (currentMenu == MENU_MAIN) drawMainMenu();
-    }
-}
 
 void setup() {
     Serial.begin(115200);
@@ -1473,6 +1510,7 @@ void setup() {
         } else {
             pinMode(pin, INPUT_PULLUP);
         }
+        btnTac[i].init(pin);
         btnTac[i].setButtonConfig(&tacBtnConfig);
     }
     DEBUG_PRINTLN("[Setup] 9 Tactical buttons initialized.");

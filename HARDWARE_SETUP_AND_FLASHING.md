@@ -115,7 +115,7 @@ The diagnostic testbench node monitors airwaves, handles automatic ECDH key exch
 
 ### Device 4: Dedicated C2 Gateway (spectre-c2-gateway)
 
-The dedicated C2 gateway firmware runs a headless (no OLED, no buttons) ESP32 that bridges the LoRa mesh to the TCC dashboard over USB serial. It includes the **Edge-AI jamming detection engine** and **anti-tamper zeroization**.
+The dedicated C2 gateway firmware runs a headless (no OLED, no buttons) ESP32 that bridges the LoRa mesh to the TCC dashboard over USB serial. It includes the **Edge-AI jamming detection engine** and relays **remote anti-tamper zeroization** commands from the TCC dashboard to individual field nodes.
 
 1. Connect the gateway ESP32 to your PC via USB.
 2. Flash using PlatformIO:
@@ -123,16 +123,8 @@ The dedicated C2 gateway firmware runs a headless (no OLED, no buttons) ESP32 th
    cd spectre-c2-gateway
    pio run --target upload
    ```
-3. **Zeroization Panic Button Wiring (Sprint D — Anti-Tamper):**
-
-   | Component | Connection | Notes |
-   |-----------|-----------|-------|
-   | Button Pin 1 | GPIO 4 | `INPUT_PULLUP`, active LOW |
-   | Button Pin 2 | GND | Common ground |
-
-   Wire a momentary push button between GPIO 4 and GND. When pressed, the ISR instantly wipes all cryptographic keys (AES-256, ECDH, CSPRNG state). **This is irreversible without reflashing.**
-
-   > **⚠️ WARNING:** The zeroization button is for emergency use only. Once triggered, the gateway cannot decrypt any further traffic.
+3. **Remote Anti-Tamper Zeroization:**
+   No physical panic button is required on the C2 gateway. Zeroization is executed remotely from the TCC dashboard on a per-node basis (via the Node Telemetry table or C2 Panel). When triggered by the commander, the gateway transmits the encrypted `CMD:ZERO` command over LoRa to selectively wipe cryptographic keys on the targeted field node.
 
 ---
 
@@ -144,21 +136,24 @@ cd spectre-dashboard
 npm install
 ```
 
-### Step 2: Running in Development Mode
+### Step 2: Running the Dashboard
 
-#### Option A: Simulated Hardware (Mock Mode)
-To test UI components, radar rendering, and simulated mesh traffic without physical ESP32 boards attached:
 ```bash
 cd spectre-dashboard
 npm run dev
 ```
 
-#### Option B: Live Serial Bridge Mode (Connected ESP32 Hardware)
-To connect to the physical C2 Base Station plugged into USB:
-```bash
-cd spectre-dashboard
-SPECTRE_MOCK=false npm run electron:dev
-```
+Open `http://localhost:5173/` in **Google Chrome** or **Microsoft Edge**.
+
+- **Simulated Hardware (Mock Mode):**
+  The dashboard automatically starts with simulated data if no hardware is connected, allowing you to test UI components and radar rendering.
+
+- **Live Serial Bridge Mode (Connected ESP32 Hardware):**
+  1. Click **⚡ CONNECT** in the title bar.
+  2. Select your ESP32's COM port from the browser's native serial port chooser.
+  3. The status will change to **● LINK ACTIVE** and live telemetry will stream from the C2 Gateway.
+
+*(Note: The legacy Electron app can still be launched via `npm run electron:dev` if a standalone desktop app is preferred).*
 
 ---
 

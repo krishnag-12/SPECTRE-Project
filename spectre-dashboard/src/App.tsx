@@ -2,13 +2,15 @@
 // S.P.E.C.T.R.E. TCC — Root Application Component
 // =============================================================================
 
-import React, { useReducer, useEffect, useCallback, useRef } from 'react';
+import React, { useReducer, useEffect, useCallback, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import TitleBar from './components/TitleBar';
 import NodeTelemetryPanel from './components/NodeTelemetryPanel';
 import RadarMap from './components/RadarMap';
 import C2Panel from './components/C2Panel';
 import StatusBar from './components/StatusBar';
+import { WebSerialBridge } from './webSerialBridge';
+import type { SerialConnectionState } from './webSerialBridge';
 import type {
   BridgeStats,
   CommandAck,
@@ -53,7 +55,9 @@ type Action =
   | { type: 'DISCONNECT' }
   | { type: 'BRIDGE_STATS'; payload: BridgeStats }
   | { type: 'LOCAL_DROP'; payload: { reason: string } }
-  | { type: 'TRUST_NODE'; payload: { nodeId: string } };
+  | { type: 'TRUST_NODE'; payload: { nodeId: string } }
+  | { type: 'SERIAL_CONNECTED'; payload: { portPath: string | null } }
+  | { type: 'SERIAL_DISCONNECTED' };
 
 const initialState: AppState = {
   nodes: {},
@@ -253,6 +257,45 @@ function telemetryReducer(state: AppState, action: Action): AppState {
       };
     }
 
+    case 'SERIAL_CONNECTED':
+      return {
+        ...state,
+        stats: {
+          ...state.stats,
+          connected: true,
+          mode: 'LIVE',
+          portPath: action.payload.portPath,
+        },
+        eventLog: [
+          {
+            id: `serial-connected-${Date.now()}`,
+            time: nowTime(),
+            severity: 'normal' as const,
+            message: `Serial link established — LIVE telemetry active`,
+          },
+          ...state.eventLog,
+        ].slice(0, 100),
+      };
+
+    case 'SERIAL_DISCONNECTED':
+      return {
+        ...state,
+        stats: {
+          ...state.stats,
+          connected: false,
+          portPath: null,
+        },
+        eventLog: [
+          {
+            id: `serial-disconnected-${Date.now()}`,
+            time: nowTime(),
+            severity: 'warning' as const,
+            message: `Serial link disconnected`,
+          },
+          ...state.eventLog,
+        ].slice(0, 100),
+      };
+
     default:
       return state;
   }
@@ -261,9 +304,16 @@ function telemetryReducer(state: AppState, action: Action): AppState {
 export default function App() {
   const [state, dispatch] = useReducer(telemetryReducer, initialState);
   const socketRef = useRef<Socket | null>(null);
+  const serialBridgeRef = useRef<WebSerialBridge | null>(null);
   const startTimeRef = useRef(Date.now());
   const timeoutMapRef = useRef<Record<string, number>>({});
+  const [serialState, setSerialState] = useState<SerialConnectionState>('disconnected');
+  const [serialPortName, setSerialPortName] = useState<string | null>(null);
 
+  // Detect if we're running in Electron (has Socket.IO backend) or browser-only
+  const isElectron = !!window.spectre;
+
+  // ---- Socket.IO path (for Electron mode) ----
   useEffect(() => {
     const socket = io('http://127.0.0.1:3001', {
       transports: ['websocket'],
@@ -294,7 +344,10 @@ export default function App() {
     });
 
     socket.on('disconnect', () => {
-      dispatch({ type: 'DISCONNECT' });
+      // Only mark disconnect if we're not using Web Serial
+      if (serialState !== 'connected') {
+        dispatch({ type: 'DISCONNECT' });
+      }
     });
 
     return () => {
@@ -302,8 +355,9 @@ export default function App() {
       timeoutMapRef.current = {};
       socket.disconnect();
     };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ---- Uptime timer ----
   useEffect(() => {
     const timer = setInterval(() => {
       const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
@@ -312,6 +366,60 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
+  // ---- Web Serial Bridge (browser-only) ----
+  const handleSerialConnect = useCallback(async () => {
+    if (!WebSerialBridge.isSupported()) {
+      alert('Web Serial API is not supported in this browser.\nUse Google Chrome or Microsoft Edge.');
+      return;
+    }
+
+    // Create bridge with callbacks that dispatch to our reducer
+    const bridge = new WebSerialBridge({
+      onTelemetry: (packets) => {
+        dispatch({ type: 'TELEMETRY_UPDATE', payload: packets });
+      },
+      onCommandAck: (ack) => {
+        if (timeoutMapRef.current[ack.commandId]) {
+          window.clearTimeout(timeoutMapRef.current[ack.commandId]);
+          delete timeoutMapRef.current[ack.commandId];
+        }
+        dispatch({ type: 'COMMAND_ACK', payload: ack });
+      },
+      onConnectionChange: (newState, portName) => {
+        setSerialState(newState);
+        setSerialPortName(portName);
+        if (newState === 'connected') {
+          dispatch({ type: 'SERIAL_CONNECTED', payload: { portPath: portName } });
+        } else if (newState === 'disconnected') {
+          dispatch({ type: 'SERIAL_DISCONNECTED' });
+        }
+      },
+      onDroppedFrame: (reason) => {
+        dispatch({ type: 'LOCAL_DROP', payload: { reason } });
+      },
+    });
+
+    serialBridgeRef.current = bridge;
+
+    try {
+      await bridge.connect();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // User cancelled — not an error to alert about
+      if (!msg.includes('No port selected') && !msg.includes('cancelled') && !msg.includes('user gesture')) {
+        console.error('[SPECTRE] Serial connection error:', msg);
+      }
+    }
+  }, []);
+
+  const handleSerialDisconnect = useCallback(async () => {
+    if (serialBridgeRef.current) {
+      await serialBridgeRef.current.disconnect();
+      serialBridgeRef.current = null;
+    }
+  }, []);
+
+  // ---- Send command (works with both Socket.IO and Web Serial) ----
   const sendCommand = useCallback((cmd: CommandPayload) => {
     const selectedNode = state.nodes[cmd.nodeId];
     if (!selectedNode || selectedNode.trustState !== 'trusted') {
@@ -319,15 +427,23 @@ export default function App() {
       return;
     }
 
-    if (socketRef.current?.connected) {
-      const commandId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-      const attempt: CommandAttempt = { ...cmd, commandId };
+    const commandId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const attempt: CommandAttempt = { ...cmd, commandId };
+    dispatch({ type: 'COMMAND_SENT', payload: attempt });
+
+    // Set timeout for ACK
+    timeoutMapRef.current[commandId] = window.setTimeout(() => {
+      dispatch({ type: 'COMMAND_TIMEOUT', payload: { commandId } });
+      delete timeoutMapRef.current[commandId];
+    }, ACK_TIMEOUT_MS);
+
+    // Send via Web Serial if connected, otherwise try Socket.IO
+    if (serialBridgeRef.current?.state === 'connected') {
+      serialBridgeRef.current.sendCommand(attempt).catch((err) => {
+        console.error('[SPECTRE] Serial send error:', err);
+      });
+    } else if (socketRef.current?.connected) {
       socketRef.current.emit('command', attempt);
-      dispatch({ type: 'COMMAND_SENT', payload: attempt });
-      timeoutMapRef.current[commandId] = window.setTimeout(() => {
-        dispatch({ type: 'COMMAND_TIMEOUT', payload: { commandId } });
-        delete timeoutMapRef.current[commandId];
-      }, ACK_TIMEOUT_MS);
     }
   }, [state.nodes]);
 
@@ -344,7 +460,13 @@ export default function App() {
 
   return (
     <div className="tcc-app">
-      <TitleBar connected={state.stats.connected} />
+      <TitleBar
+        connected={state.stats.connected}
+        serialState={serialState}
+        serialPort={serialPortName}
+        onSerialConnect={handleSerialConnect}
+        onSerialDisconnect={handleSerialDisconnect}
+      />
 
       <div className="tcc-main">
         <div className="panel panel--left">
@@ -352,6 +474,7 @@ export default function App() {
             nodes={nodesArray}
             selectedNodeId={state.selectedNodeId}
             onSelectNode={selectNode}
+            onSendCommand={sendCommand}
             eventLog={state.eventLog}
           />
         </div>

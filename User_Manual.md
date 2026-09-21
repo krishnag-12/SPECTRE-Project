@@ -276,30 +276,34 @@ The anomaly engine returns `0.0` for the first 10 received packets while it popu
 
 ---
 
-## 12. Anti-Tamper Zeroization
+## 12. Anti-Tamper Zeroization (Remote Kill)
 
-S.P.E.C.T.R.E. includes a hardware **panic switch** for emergency cryptographic material destruction.
+S.P.E.C.T.R.E. includes a **remote cryptographic kill switch** that allows the commander to selectively destroy a compromised field node's encryption keys from the dashboard.
 
 ### How It Works
 
-1. A momentary push button is wired between **GPIO 4** and **GND** on the C2 gateway.
-2. When pressed, the button triggers a hardware interrupt that **instantly wipes all cryptographic keys**:
-   - AES-256 symmetric key (overwritten with random noise)
+1. In the **Node Telemetry** table on the TCC dashboard, each active node has a red **KILL** button.
+2. Click **KILL** once — the button changes to **⚠ CONFIRM** (auto-cancels after 3 seconds).
+3. Click **⚠ CONFIRM** — the dashboard sends a `CMD:ZERO` command through the C2 gateway via LoRa to the targeted node.
+4. The targeted field node receives the command, verifies the target matches its own `NODE_ID`, and **instantly wipes all cryptographic keys**:
+   - AES-256 symmetric key (overwritten with hardware random noise)
    - ECDH ephemeral key context (freed)
    - CSPRNG state (destroyed)
    - Key exchange flag set to `false`
-3. After zeroization, the gateway **cannot decrypt any further traffic** until it is reflashed.
+5. The OLED displays **ZEROIZED / KEYS DESTROYED / REFLASH REQUIRED** and the device halts permanently.
+6. The device **cannot decrypt any further traffic** until firmware is reflashed.
 
-### Wiring
+### Key Points
 
-| Component | Connection |
-|-----------|-----------|
-| Button Pin 1 | GPIO 4 on ESP32 |
-| Button Pin 2 | GND |
+| Feature | Detail |
+|---------|--------|
+| Targeted | Only the selected node is zeroized — other nodes are unaffected |
+| Remote | Initiated from the dashboard — no physical access to the field node required |
+| Command path | Dashboard → C2 Gateway → LoRa mesh → Target field node |
+| Two-click safety | First click arms, second click confirms (prevents accidental zeroization) |
+| Slide-to-arm (C2 Panel) | The C2 Panel also provides a full slide-to-arm + 3-second countdown zeroize switch |
 
-The GPIO uses `INPUT_PULLUP` — no external resistor is needed.
-
-> **⚠️ WARNING:** Zeroization is **irreversible** without reflashing the firmware. Use only in physical compromise or capture scenarios.
+> **⚠️ WARNING:** Zeroization is **irreversible** without reflashing the firmware. Use only when a field node is captured, compromised, or needs emergency COMSEC destruction.
 
 ---
 

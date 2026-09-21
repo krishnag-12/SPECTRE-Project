@@ -15,7 +15,6 @@
 #include "mbedtls/ctr_drbg.h"
 #include "mbedtls/sha256.h"
 #include "anomaly_engine.h"
-#include "zeroize.h"
 
 #define NODE_ID "Gateway-1" // Identifier for the dashboard's own node
 
@@ -411,8 +410,6 @@ void setup() {
     
     initCryptoAndGenerateKeys();
 
-    // Sprint D: Initialize anti-tamper zeroization ISR (GPIO 4)
-    initZeroize(ZEROIZE_PIN);
 
     txQueue = xQueueCreate(QUEUE_DEPTH, sizeof(MessageEvent));
     

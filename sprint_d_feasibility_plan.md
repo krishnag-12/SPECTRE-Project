@@ -123,14 +123,14 @@ The Python pipeline uses 3 rolling windows (10, 50, 100) × 5 features × 2 stat
 
 ### 2.4 Anti-Tamper (Zeroization)
 
-**Fully feasible.** Remote zeroization allows the commander to selectively kill a compromised field node from the dashboard.
+**Fully feasible.** The ESP32 has hardware interrupt capability on any GPIO.
 
 | Mechanism | Implementation | Impact |
 |-----------|---------------|--------|
-| Remote C2 Kill Command | LoRa encrypted `CMD:ZERO:<nodeId>` | Zero CPU/RAM impact until triggered |
+| Panic button GPIO → NMI ISR | `attachInterrupt(PIN, zeroize, FALLING)` | Zero CPU/RAM impact until triggered |
 | AES_KEY wipe | `memset(AES_KEY, 0, 32)` + overwrite with `esp_fill_random()` | Instantaneous |
-| mbedTLS context wipe | `mbedtls_ecdh_free()` + `mbedtls_ctr_drbg_free()` + `mbedtls_entropy_free()` | Instantaneous |
-| Permanent Halt | Bricks target node until reflash (`while(true)`) | Permanent until firmware reflash |
+| mbedTLS context wipe | `mbedtls_ecdh_free()` + `mbedtls_ctr_drbg_free()` | Instantaneous |
+| Optional: SPIFFS/NVS wipe | `esp_partition_erase_range()` | ~100ms for flash erase |
 
 ---
 
@@ -226,26 +226,20 @@ graph TD
 3. In RX handler after decrypt: `float aScore = engine.computeScore(radio.getRSSI(), radio.getSNR());`
 4. Replace `\"anomalyScore\":0.0` → `\"anomalyScore\":%.4f, aScore`
 
-### Phase 4: Anti-Tamper Zeroization (Remote Kill)
+### Phase 4: Anti-Tamper Zeroization
 
-**Files:** `spectre-main/src/main.cpp`, `spectre-c2-gateway/src/main.cpp`, `spectre-dashboard/src/components/NodeTelemetryPanel.tsx`
+**Files:** `zeroize.h`, `main.cpp` (2 lines)
 
-1. Dashboard triggers `CMD:ZERO` targeted to a specific field node (`nodeId`).
-2. C2 Gateway encrypts and broadcasts `CMD:ZERO:<nodeId>` over LoRa mesh.
-3. Field node verifies `targetId == NODE_ID`:
-   - Overwrites AES-256 symmetric key with random noise (`esp_fill_random`)
-   - Frees ECDH key exchange context (`mbedtls_ecdh_free`)
-   - Destroys CSPRNG entropy state (`mbedtls_ctr_drbg_free`, `mbedtls_entropy_free`)
-   - Shows ZEROIZED on OLED display
-   - Permanently halts device until reflashed
-4. Untargeted nodes ignore and continue normal mesh operations.
+1. Define `PANIC_PIN` (recommend GPIO 4 — free, has interrupt capability)
+2. Write ISR: wipe `AES_KEY[32]`, free mbedTLS contexts, optional flash erase
+3. Add `initZeroize(PANIC_PIN)` at end of `setup()`
 
 ### Phase 5: Validation
 
 1. **Unit test (PC):** Run exported C model against Python model on test dataset → scores must match within ε=0.001
 2. **Integration test (ESP32):** Flash gateway → feed known-jamming RSSI/SNR values via serial loopback → verify `anomalyScore > 0.7` in JSON output
 3. **End-to-end test (Hardware):** Field node TX → gateway RX → dashboard shows threat badge
-4. **Remote Zeroization test:** Send KILL command from dashboard → targeted field node wipes keys, displays ZEROIZED on OLED, and halts; untargeted nodes remain operational
+4. **Zeroization test:** Press panic button → verify AES_KEY is zeroed → subsequent decryption fails
 
 ---
 
