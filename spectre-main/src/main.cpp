@@ -9,7 +9,7 @@
 #define SIMULATOR_MODE 0
 #define ENABLE_RADIO_TASK 1
 #define C2_BRIDGE_MODE 0
-#define ENABLE_FHSS 1
+#define ENABLE_FHSS 0
 #define ENABLE_DTN 1
 #define NODE_ID "Alpha-1"
 
