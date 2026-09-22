@@ -28,7 +28,7 @@ By leveraging Long Range (LoRa) Chirp Spread Spectrum (CSS) modulation and a dua
 *   **Antenna:** 433 MHz 3dBi SMA Helical
 *   **Visual Interface:** 0.96" SSD1306 OLED (I2C)
 *   **Power Management:** TP4056 1A Li-Ion Regulator & 18650 3.7V 2600mAh Li-Ion Cell
-*   **Tactical Input:** 6x6x5mm Push Button Matrix for rapid C2 payload deployment
+*   **Tactical Input:** 4x4 Push Button Matrix (16 keys) for rapid menu navigation and C2 payload deployment
 
 ### Software Stack & RTOS
 S.P.E.C.T.R.E. relies on a highly isolated **FreeRTOS** dual-core environment:
@@ -54,21 +54,21 @@ The 0.96" SSD1306 OLED display serves as the field operator's primary situationa
 The screensaver logic is defined in `spectre_logo.h` and integrated into the Core 1 UI loop. It respects `C2_BRIDGE_MODE` (no OLED on the headless gateway) and `composePending` state (no screensaver while a TX confirmation is on screen).
 
 ### 9 Tactical Quick Messages Messaging
-S.P.E.C.T.R.E. includes a dedicated **9 Tactical Quick Messages** (Medical Evacuation Request) system compatible with Indian military operational procedures. Nine physical push buttons map directly to the nine standard Tactical Quick Message lines:
+S.P.E.C.T.R.E. includes a dedicated **9 Tactical Quick Messages** (Medical Evacuation Request) system compatible with Indian military operational procedures. The 4x4 matrix keypad includes dedicated keys (S4–S12) that map directly to the nine standard Tactical Quick Message lines:
 
-| Button | Line | Content |
-|--------|------|---------|
-| L1 | Location | Pickup-site grid coordinates |
-| L2 | Communications | Radio frequency, callsign, suffix |
-| L3 | Patients | Count by precedence (Urgent/Priority/Routine) |
-| L4 | Special Equipment | Hoist, ventilator, extraction equipment |
-| L5 | Patient Type | Litter / Ambulatory count |
-| L6 | Security | Pickup-site security status |
-| L7 | Marking | Panels, pyrotechnic, smoke |
-| L8 | Nationality | Patient nationality and status |
-| L9 | CBRN/Terrain | CBRN contamination / terrain description |
+| Key | Line | Content |
+|-----|------|---------|
+| S4 (TQM1) | Location | Pickup-site grid coordinates |
+| S5 (TQM2) | Communications | Radio frequency, callsign, suffix |
+| S6 (TQM3) | Patients | Count by precedence (Urgent/Priority/Routine) |
+| S7 (TQM4) | Special Equipment | Hoist, ventilator, extraction equipment |
+| S8 (TQM5) | Patient Type | Litter / Ambulatory count |
+| S9 (TQM6) | Security | Pickup-site security status |
+| S10 (TQM7) | Marking | Panels, pyrotechnic, smoke |
+| S11 (TQM8) | Nationality | Patient nationality and status |
+| S12 (TQM9) | CBRN/Terrain | CBRN contamination / terrain description |
 
-**Pressing a Tactical Quick Message button instantly transmits that line** — no manual composition required. Two transmission modes are supported:
+**Pressing a Tactical Quick Message key (S4-S12) instantly transmits that line** — no manual composition required. Two transmission modes are supported:
 
 *   **Broadcast (default):** Tactical Quick Message line is sent to all mesh nodes and the C2 gateway.
 *   **Individual:** Tactical Quick Message line is addressed to a selected target node; the C2 gateway still receives every message regardless of mode.

@@ -77,21 +77,20 @@ Field nodes run full UI menu state machines, send tactical alerts, and communica
    cd spectre-main
    pio run --target upload
    ```
-5. **9 Tactical Quick Messages Button Wiring** (see `spectre_tactical.h` for pin definitions):
+5. **4x4 Button Matrix Wiring** (see `keypad_matrix.h` for full key mapping):
 
-   | Button | Line | ESP32 GPIO | Notes |
-   |--------|------|-----------|-------|
-   | L1 | Location | GPIO 4 | `INPUT_PULLUP`, active LOW |
-   | L2 | Comms | GPIO 16 | `INPUT_PULLUP`, active LOW |
-   | L3 | Patients | GPIO 17 | `INPUT_PULLUP`, active LOW |
-   | L4 | Special Equip | GPIO 13 | `INPUT_PULLUP`, active LOW |
-   | L5 | Patient Type | GPIO 12 | `INPUT_PULLUP`, active LOW (boot strapping pin) |
-   | L6 | Security | GPIO 27 | `INPUT_PULLUP`, active LOW |
-   | L7 | Marking | GPIO 2 | `INPUT_PULLUP`, active LOW (onboard LED) |
-   | L8 | Nationality | GPIO 15 | `INPUT_PULLUP`, active LOW |
-   | L9 | CBRN/Terrain | GPIO 34 | **Input-only, requires external 10kΩ pull-up to 3.3V** |
+   | Matrix Pin | ESP32 GPIO | Direction | Notes |
+   |------------|-----------|-----------|-------|
+   | R1 (Row 1) | GPIO 32 | OUTPUT | Active LOW scan |
+   | R2 (Row 2) | GPIO 33 | OUTPUT | Active LOW scan |
+   | R3 (Row 3) | GPIO 25 | OUTPUT | Active LOW scan |
+   | R4 (Row 4) | GPIO 4 | OUTPUT | Active LOW scan |
+   | C1 (Col 1) | GPIO 16 | INPUT_PULLUP | Internal pull-up |
+   | C2 (Col 2) | GPIO 17 | INPUT_PULLUP | Internal pull-up |
+   | C3 (Col 3) | GPIO 13 | INPUT_PULLUP | Internal pull-up |
+   | C4 (Col 4) | GPIO 27 | INPUT_PULLUP | Internal pull-up |
 
-   Wire each button between the GPIO pin and GND. All GPIOs except GPIO 34 use internal pull-ups.
+   The matrix replaces the 3 individual navigation buttons and the 9 individual tactical buttons with a single 16-key layout. Keys S1-S3 are for Navigation, S4-S12 for Tactical Quick Messages, and S13-S16 are reserved.
 
 ---
 

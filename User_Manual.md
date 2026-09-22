@@ -12,7 +12,7 @@ S.P.E.C.T.R.E. is a tactical encrypted communication terminal that provides infr
 - **ESP32 Dual-Core MCU** — runs the FreeRTOS operating system
 - **SX1278 LoRa Transceiver** — 433 MHz ISM band, up to 10 km line-of-sight range
 - **0.96" SSD1306 OLED Display** — 128×64 monochrome situational awareness screen
-- **3-Button Navigation Matrix** — UP, DOWN, SELECT
+- **16-Key 4x4 Navigation & Tactical Matrix**
 - **18650 Li-Ion Battery** — 3.7V, ~2600 mAh capacity
 
 ---
@@ -31,13 +31,13 @@ S.P.E.C.T.R.E. is a tactical encrypted communication terminal that provides infr
 
 ## 3. Main Menu
 
-After boot, the main tactical menu is displayed. Use the buttons to navigate:
+After boot, the main tactical menu is displayed. Use the keypad matrix (S1-S3) to navigate:
 
-| Button | Action |
+| Key | Action |
 |--------|--------|
-| **UP** | Move cursor up in the menu |
-| **DOWN** | Move cursor down in the menu |
-| **SELECT** | Execute the highlighted command |
+| **S1 (UP)** | Move cursor up in the menu |
+| **S2 (DOWN)** | Move cursor down in the menu |
+| **S3 (SELECT)** | Execute the highlighted command |
 
 ### Menu Options
 
@@ -59,41 +59,40 @@ After boot, the main tactical menu is displayed. Use the buttons to navigate:
 
 ### Overview
 
-The S.P.E.C.T.R.E. terminal includes **9 dedicated physical buttons** for rapid Tactical Quick Message transmission. Each button corresponds to one of the nine standard Indian military operational commands or messages.
+The S.P.E.C.T.R.E. terminal includes **9 dedicated keys on the 4x4 matrix (S4-S12)** for rapid Tactical Quick Message transmission. Each key corresponds to one of the nine standard Indian military operational commands or messages.
 
 ### Tactical Quick Message Line Definitions
 
-| Button | Label | Purpose |
-|--------|-------|---------|
-| **1** | CONTACT | Enemy contact / engagement |
-| **2** | SATHI GHAYAL | Buddy wounded / casualty |
-| **3** | MAYDAY | Extreme emergency |
-| **4** | LZ CLEAR | Landing/extraction zone clear |
-| **5** | LZ HOT | Landing/extraction zone compromised/dangerous |
-| **6** | TARGET SPOTTED | Enemy visually identified |
-| **7** | SITREP | Request/send situation report |
-| **8** | WILCO | Order understood and will comply |
-| **9** | OUT | Transmission/conversation terminated |
+| Key | Label | Purpose |
+|-----|-------|---------|
+| **S4 (TQM1)** | CONTACT | Enemy contact / engagement |
+| **S5 (TQM2)** | SATHI GHAYAL | Buddy wounded / casualty |
+| **S6 (TQM3)** | MAYDAY | Extreme emergency |
+| **S7 (TQM4)** | LZ CLEAR | Landing/extraction zone clear |
+| **S8 (TQM5)** | LZ HOT | Landing/extraction zone compromised/dangerous |
+| **S9 (TQM6)** | TARGET SPOTTED | Enemy visually identified |
+| **S10 (TQM7)** | SITREP | Request/send situation report |
+| **S11 (TQM8)** | WILCO | Order understood and will comply |
+| **S12 (TQM9)** | OUT | Transmission/conversation terminated |
 
-### Tactical Quick Message Button Wiring
+### 4x4 Matrix Keypad Wiring
 
-| Button | GPIO | Notes |
-|--------|------|-------|
-| 1 | 4 | `INPUT_PULLUP`, active LOW |
-| 2 | 16 | `INPUT_PULLUP`, active LOW |
-| 3 | 17 | `INPUT_PULLUP`, active LOW |
-| 4 | 13 | `INPUT_PULLUP`, active LOW |
-| 5 | 12 | `INPUT_PULLUP`, active LOW (boot strapping pin) |
-| 6 | 27 | `INPUT_PULLUP`, active LOW |
-| 7 | 2 | `INPUT_PULLUP`, active LOW (onboard LED) |
-| 8 | 15 | `INPUT_PULLUP`, active LOW |
-| 9 | 34 | **Input-only — requires external 10kΩ pull-up to 3.3V** |
+| Matrix Pin | ESP32 GPIO | Notes |
+|------------|-----------|-------|
+| R1 (Row 1) | 32 | OUTPUT, active LOW |
+| R2 (Row 2) | 33 | OUTPUT, active LOW |
+| R3 (Row 3) | 25 | OUTPUT, active LOW |
+| R4 (Row 4) | 4 | OUTPUT, active LOW |
+| C1 (Col 1) | 16 | `INPUT_PULLUP` |
+| C2 (Col 2) | 17 | `INPUT_PULLUP` |
+| C3 (Col 3) | 13 | `INPUT_PULLUP` |
+| C4 (Col 4) | 27 | `INPUT_PULLUP` |
 
-Wire each button between the GPIO pin and GND.
+The matrix keys S13, S14, S15, and S16 are reserved for future features.
 
 ### How to Send a Tactical Quick Message
 
-1. Press the corresponding Tactical Quick Message button (1–9).
+1. Press the corresponding Tactical Quick Message key (S4–S12).
 2. The message is **immediately encrypted and transmitted** — no manual composition needed.
 3. The OLED confirms:
    ```
@@ -122,7 +121,7 @@ To configure Individual mode:
 1. Navigate to `TAC MSG CFG` in the main menu → press **SELECT**.
 2. Select `INDIVIDUAL` → press **SELECT**.
 3. Choose a target node from the list → press **SELECT**.
-4. The device returns to the main menu. All subsequent Tactical Quick Message button presses will be addressed to the selected node.
+4. The device returns to the main menu. All subsequent Tactical Quick Message key presses will be addressed to the selected node.
 
 To switch back to Broadcast:
 

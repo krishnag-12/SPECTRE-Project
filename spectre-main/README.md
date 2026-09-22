@@ -20,7 +20,7 @@
   - 16x2 Character LCD (I2C) *OR*
   - 0.96" OLED Display (I2C) *OR*
   - Color TFT Display (SPI)
-- **Input:** Push buttons (Debounced via AceButton library)
+- **Input:** 4x4 Matrix Keypad (16 keys) for UI and tactical messaging
 
 ---
 
@@ -34,7 +34,7 @@ This project uses **PlatformIO** (via VS Code) rather than the standard Arduino 
 3. Clone this repository to your local machine:
 ```bash
 git clone [https://github.com/krishnag-12/SPECTRE_OS.git](https://github.com/krishnag-12/SPECTRE_OS.git)
-def open the cloned SPECTRE_OS folder in VS Code. PlatformIO will automatically read the platformio.ini file and download all necessary libraries (RadioLib, AceButton, and your chosen Display library).
+def open the cloned SPECTRE_OS folder in VS Code. PlatformIO will automatically read the platformio.ini file and download all necessary libraries (RadioLib and your chosen Display library).
 ```
 📚 Project Documentation (MCP)
 This repository is configured with a Model Context Protocol (MCP) server to keep workspace documentation synced. Ensure your IDE is reading the `.vscode/mcp.json` file to securely access the latest architectural docs and driver specifications.

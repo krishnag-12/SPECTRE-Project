@@ -40,30 +40,12 @@ static const char* TAC_BTN_PAYLOADS[] = {
 };
 
 // ---------------------------------------------------------------------------
-// GPIO Pin Definitions for 9 Tactical Buttons
+// GPIO Pin Definitions — REMOVED
 // ---------------------------------------------------------------------------
-// These GPIOs are chosen from the ESP32-WROOM-32 available pins that do
-// NOT conflict with existing SPI (5,18,19,23), I2C (21,22), LoRa IRQ
-// (26,35), LoRa RST (14), or nav buttons (25,32,33).
-//
-// Mapping: 9 dedicated buttons for Tactical Quick Messages 1–9
+// The 9 Tactical Quick Messages are now triggered via a 4x4 button matrix
+// (keys S4–S12). See keypad_matrix.h for GPIO wiring and key mapping.
 // ---------------------------------------------------------------------------
 
-#define TAC_BTN_1_PIN   4   // CONTACT
-#define TAC_BTN_2_PIN   16  // SATHI GHAYAL
-#define TAC_BTN_3_PIN   17  // MAYDAY
-#define TAC_BTN_4_PIN   13  // LZ CLEAR
-#define TAC_BTN_5_PIN   12  // LZ HOT
-#define TAC_BTN_6_PIN   27  // TGT SPOTTED
-#define TAC_BTN_7_PIN   2   // SITREP
-#define TAC_BTN_8_PIN   15  // WILCO
-#define TAC_BTN_9_PIN   34  // OUT (input-only, external pull-up required)
-
-static const int TAC_BTN_PINS[9] = {
-    TAC_BTN_1_PIN, TAC_BTN_2_PIN, TAC_BTN_3_PIN,
-    TAC_BTN_4_PIN, TAC_BTN_5_PIN, TAC_BTN_6_PIN,
-    TAC_BTN_7_PIN, TAC_BTN_8_PIN, TAC_BTN_9_PIN
-};
 
 // Message ID range: 0xD1–0xD9 (Button 1–9)
 // No collision with: 0x01-0x04 tactical, 0x90 PING, 0x92 ZERO,

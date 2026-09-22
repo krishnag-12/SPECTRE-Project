@@ -17,9 +17,9 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-#include <AceButton.h>
 #include "spectre_logo.h"
 #include "spectre_tactical.h"
+#include "keypad_matrix.h"
 
 // Cryptography Libraries
 #include "mbedtls/aes.h"
@@ -39,7 +39,7 @@
   #include <SPIFFS.h>
 #endif
 
-using namespace ace_button;
+// (AceButton removed — input is now via 4x4 matrix keypad, see keypad_matrix.h)
 
 // =============================================================================
 // HARDWARE PIN WIRING REFERENCE (ESP32-WROOM-32 DevKit)
@@ -56,9 +56,14 @@ using namespace ace_button;
 //  GPIO 19     │  SX1278 MISO (SPI DO)  │  SPI Master In
 //  GPIO 21     │  SSD1306 SDA (I2C)     │  OLED Data
 //  GPIO 22     │  SSD1306 SCL (I2C)     │  OLED Clock
-//  GPIO 32     │  Tactile Button (UP)   │  Pull-up, active LOW
-//  GPIO 33     │  Tactile Button (DOWN) │  Pull-up, active LOW
-//  GPIO 25     │  Tactile Button (SEL)  │  Pull-up, active LOW
+//  GPIO 32     │  4x4 Matrix Row R1     │  OUTPUT (active LOW)
+//  GPIO 33     │  4x4 Matrix Row R2     │  OUTPUT (active LOW)
+//  GPIO 25     │  4x4 Matrix Row R3     │  OUTPUT (active LOW)
+//  GPIO  4     │  4x4 Matrix Row R4     │  OUTPUT (active LOW)
+//  GPIO 16     │  4x4 Matrix Col C1     │  INPUT_PULLUP
+//  GPIO 17     │  4x4 Matrix Col C2     │  INPUT_PULLUP
+//  GPIO 13     │  4x4 Matrix Col C3     │  INPUT_PULLUP
+//  GPIO 27     │  4x4 Matrix Col C4     │  INPUT_PULLUP
 //  3V3         │  SX1278 VCC, SSD1306   │  Power rail
 //  GND         │  Common ground         │  Ground rail
 // ─────────────┴────────────────────────┴──────────────────────────
@@ -69,6 +74,7 @@ using namespace ace_button;
 //  - SPI pins 18/19/23 are ESP32 default VSPI and do NOT need
 //    explicit #define — the RadioLib SX1278 constructor uses them.
 //  - I2C address for SSD1306: 0x3C (hardcoded in setup()).
+//  - See keypad_matrix.h for full 4x4 matrix key mapping (S1–S16).
 // =============================================================================
 
 // =============================================================================
@@ -148,9 +154,8 @@ static bool fhssCsprngSeeded = false;
 #define SCREEN_HEIGHT 64
 #define OLED_RESET   -1
 
-#define BTN_UP_PIN    32       // See wiring table above
-#define BTN_DOWN_PIN  33       // See wiring table above
-#define BTN_SEL_PIN   25       // See wiring table above
+// Individual button pins removed — input is now via 4x4 matrix keypad.
+// See keypad_matrix.h for GPIO wiring and key mapping.
 
 // =============================================================================
 // CORE MESSAGE / PACKET CONSTANTS
@@ -264,12 +269,7 @@ TaskHandle_t  taskRadioHandle;
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-AceButton btnUp(BTN_UP_PIN);
-AceButton btnDown(BTN_DOWN_PIN);
-AceButton btnSel(BTN_SEL_PIN);
-
-// 9 Tactical Quick Message buttons (see spectre_tactical.h for pin mapping)
-AceButton btnTac[9];
+// (AceButton objects removed — replaced by 4x4 matrix keypad)
 
 volatile bool rxFlag    = false;
 volatile bool cadDoneFlag = false;
@@ -1313,57 +1313,51 @@ static void resetIdleTimer() {
 }
 
 // =============================================================================
-// TACTICAL BUTTON HANDLER — 9 dedicated quick-message buttons
+// MATRIX KEY DISPATCH — processes key events from the 4x4 matrix keypad
 // =============================================================================
-static void handleTacButtonEvent(AceButton* button, uint8_t eventType, uint8_t) {
-    if (eventType != AceButton::kEventPressed) return;
+static void dispatchMatrixKey(MatrixKey key) {
+    if (key == KEY_NONE) return;
+
     resetIdleTimer();
     if (screensaverActive) return;
 
-    uint8_t pin = button->getPin();
-    int lineNum = -1;
-    for (int i = 0; i < 9; i++) {
-        if (pin == TAC_BTN_PINS[i]) { lineNum = i + 1; break; }
+    // --- Tactical Quick Message keys (S4–S12 → TQM1–TQM9) ---
+    uint8_t tacLine = matrixKeyToTacLine(key);
+    if (tacLine >= 1 && tacLine <= 9) {
+        // Build and queue the tactical message using existing TX infrastructure
+        MessageEvent txMsg;
+        memset(&txMsg, 0, sizeof(txMsg));
+        txMsg.messageID = TAC_MSG_ID_BASE + tacLine; // 0xD1-0xD9
+        txMsg.hopCount  = 3;
+        tacBuildPayload(txMsg.payload, MAX_PAYLOAD_LEN, tacLine);
+        xQueueSend(txQueue, &txMsg, 0);
+
+        // Show TX confirmation on OLED
+        lastTacBtnSent = tacLine;
+        composePending = true;
+        composeDoneMs = millis();
+        currentMenu = MENU_TAC_SENT;
+        drawTacSent(tacLine);
+
+        DEBUG_PRINTF("[TAC] Line %d TX queued (%s)\n", tacLine,
+                     tacTxMode == TAC_TX_BROADCAST ? "BROADCAST" : tacTargetNode);
+        return;
     }
-    if (lineNum < 1 || lineNum > 9) return;
 
-    // Build and queue the tactical message using existing TX infrastructure
-    MessageEvent txMsg;
-    memset(&txMsg, 0, sizeof(txMsg));
-    txMsg.messageID = TAC_MSG_ID_BASE + (uint8_t)lineNum; // 0xD1-0xD9
-    txMsg.hopCount  = 3;
-    tacBuildPayload(txMsg.payload, MAX_PAYLOAD_LEN, (uint8_t)lineNum);
-    xQueueSend(txQueue, &txMsg, 0);
+    // --- Reserved keys (S13–S16) — do nothing for now ---
+    if (key >= KEY_RSV13 && key <= KEY_RSV16) return;
 
-    // Show TX confirmation on OLED
-    lastTacBtnSent = (uint8_t)lineNum;
-    composePending = true;
-    composeDoneMs = millis();
-    currentMenu = MENU_TAC_SENT;
-    drawTacSent((uint8_t)lineNum);
+    // --- Navigation keys (UP / DOWN / SELECT) ---
 
-    DEBUG_PRINTF("[TAC] Line %d TX queued (%s)\n", lineNum,
-                 tacTxMode == TAC_TX_BROADCAST ? "BROADCAST" : tacTargetNode);
-}
-
-// =============================================================================
-// NAVIGATION BUTTON HANDLER (UP/DOWN/SEL)
-// =============================================================================
-static void handleButtonEvent(AceButton* button, uint8_t eventType, uint8_t) {
-    if (eventType != AceButton::kEventPressed) return;
-    resetIdleTimer();
-    if (screensaverActive) return;
-    uint8_t pin = button->getPin();
-
-    // --- Tactical Config Menu ---
+    // Tactical Config Menu
     if (currentMenu == MENU_TAC_CFG) {
-        if (pin == BTN_UP_PIN) {
+        if (key == KEY_UP) {
             menuCursor = (menuCursor == 0) ? 1 : 0;
             drawTacCfgMenu();
-        } else if (pin == BTN_DOWN_PIN) {
+        } else if (key == KEY_DOWN) {
             menuCursor = (menuCursor == 1) ? 0 : 1;
             drawTacCfgMenu();
-        } else if (pin == BTN_SEL_PIN) {
+        } else if (key == KEY_SELECT) {
             if (menuCursor == 0) {
                 tacTxMode = TAC_TX_BROADCAST;
                 strncpy(tacTargetNode, "*", sizeof(tacTargetNode));
@@ -1379,15 +1373,15 @@ static void handleButtonEvent(AceButton* button, uint8_t eventType, uint8_t) {
         return;
     }
 
-    // --- Tactical Target Selection ---
+    // Tactical Target Selection
     if (currentMenu == MENU_TAC_TARGET) {
-        if (pin == BTN_UP_PIN) {
+        if (key == KEY_UP) {
             tacTargetCursor = (tacTargetCursor - 1 + tacKnownNodeCount) % tacKnownNodeCount;
             drawTacTargetMenu();
-        } else if (pin == BTN_DOWN_PIN) {
+        } else if (key == KEY_DOWN) {
             tacTargetCursor = (tacTargetCursor + 1) % tacKnownNodeCount;
             drawTacTargetMenu();
-        } else if (pin == BTN_SEL_PIN) {
+        } else if (key == KEY_SELECT) {
             strncpy(tacTargetNode, tacKnownNodes[tacTargetCursor],
                     sizeof(tacTargetNode) - 1);
             tacTargetNode[sizeof(tacTargetNode) - 1] = '\0';
@@ -1398,15 +1392,15 @@ static void handleButtonEvent(AceButton* button, uint8_t eventType, uint8_t) {
         return;
     }
 
-    // --- Main Menu ---
+    // Main Menu
     if (currentMenu == MENU_MAIN) {
-        if (pin == BTN_UP_PIN) {
+        if (key == KEY_UP) {
             menuCursor = (menuCursor - 1 + menuCount) % menuCount;
             needRedraw = true;
-        } else if (pin == BTN_DOWN_PIN) {
+        } else if (key == KEY_DOWN) {
             menuCursor = (menuCursor + 1) % menuCount;
             needRedraw = true;
-        } else if (pin == BTN_SEL_PIN) {
+        } else if (key == KEY_SELECT) {
             if (menuCursor == menuCount - 1) {
                 // INBOX
                 nextMenu = MENU_INBOX; menuChanged = true;
@@ -1490,30 +1484,9 @@ void setup() {
 #endif
 
 #if !C2_BRIDGE_MODE
-    pinMode(BTN_UP_PIN,   INPUT_PULLUP);
-    pinMode(BTN_DOWN_PIN, INPUT_PULLUP);
-    pinMode(BTN_SEL_PIN,  INPUT_PULLUP);
-    ButtonConfig* config = ButtonConfig::getSystemButtonConfig();
-    config->setEventHandler(handleButtonEvent);
-    config->setFeature(ButtonConfig::kFeatureClick);
-
-    // Initialize 9 Tactical buttons
-    // GPIO 34 is input-only (no internal pull-up) — requires external pull-up resistor.
-    // All other tactical GPIOs use INPUT_PULLUP (internal pull-up, active LOW).
-    static ButtonConfig tacBtnConfig;
-    tacBtnConfig.setEventHandler(handleTacButtonEvent);
-    tacBtnConfig.setFeature(ButtonConfig::kFeatureClick);
-    for (int i = 0; i < 9; i++) {
-        int pin = TAC_BTN_PINS[i];
-        if (pin == 34) {
-            pinMode(pin, INPUT); // GPIO 34: input-only, external pull-up required
-        } else {
-            pinMode(pin, INPUT_PULLUP);
-        }
-        btnTac[i].init(pin);
-        btnTac[i].setButtonConfig(&tacBtnConfig);
-    }
-    DEBUG_PRINTLN("[Setup] 9 Tactical buttons initialized.");
+    // Initialize 4x4 button matrix (UP/DOWN/SELECT + 9 Tactical + 4 Reserved)
+    matrixInit();
+    DEBUG_PRINTLN("[Setup] 4x4 button matrix initialized.");
     lastActivityMs = millis(); // Start the idle timer from boot
 #endif
 }
@@ -1546,13 +1519,16 @@ void loop() {
         drawSpectreLogo(display);
     }
 
-    // If screensaver is active, only check buttons (wake handled in handler)
+    // If screensaver is active, only check buttons (wake handled in dispatch)
     // and check for incoming messages (which also wake the display).
-    // Poll all buttons (nav + 9 tactical)
-    btnUp.check();
-    btnDown.check();
-    btnSel.check();
-    for (int i = 0; i < 9; i++) btnTac[i].check();
+    // Scan 4x4 matrix keypad (non-blocking, debounced)
+    MatrixKey key = matrixScan();
+    if (key != KEY_NONE) {
+        resetIdleTimer();
+        if (!screensaverActive) {
+            dispatchMatrixKey(key);
+        }
+    }
 
     if (screensaverActive) {
         // Still check for incoming messages while screensaver is on
