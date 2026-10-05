@@ -7,13 +7,9 @@
 
 #include <Arduino.h>
 #include <RadioLib.h>
+#include <Preferences.h>
 #include "mbedtls/aes.h"
 #include "mbedtls/gcm.h"
-#include "mbedtls/ecp.h"
-#include "mbedtls/ecdh.h"
-#include "mbedtls/entropy.h"
-#include "mbedtls/ctr_drbg.h"
-#include "mbedtls/sha256.h"
 #include "anomaly_engine.h"
 
 #define NODE_ID "Gateway-1" // Identifier for the dashboard's own node
@@ -86,13 +82,18 @@ struct __attribute__((packed)) LoRaPacket {
 
 struct __attribute__((packed)) LoRaKeyExchangePacket {
     uint8_t  magicByte;                         
-    uint8_t  pubKeyLen;
-    uint8_t  publicKey[65];
+    char     nodeId[NODE_ID_MAX_LEN];
+    uint8_t  isResponse;                        // 0 = Master broadcast / Rekey, 1 = Node Joined / Ack
+    uint8_t  keyLen;                            // 32
+    uint8_t  sessionKey[32];                    // 256-bit network session key
 };
 
 // =============================================================================
-// GLOBALS
+// GLOBALS & UNIFIED NETWORK SESSION KEY
 // =============================================================================
+
+static uint8_t primaryAESKey[32] = {0}; // Active 256-bit network session key
+static Preferences prefs;
 
 QueueHandle_t txQueue;
 TaskHandle_t  taskRadioHandle;
@@ -100,17 +101,10 @@ TaskHandle_t  taskRadioHandle;
 SX1278 radio = new Module(LORA_NSS_PIN, LORA_DIO0_PIN, LORA_RESET_PIN, LORA_DIO1_PIN);
 volatile bool rxFlag = false;
 
-uint8_t AES_KEY[32] = {0}; 
 bool keyExchangeComplete = false;
 
 // Sprint D: Edge-AI Anomaly Detection Engine
 static AnomalyEngine anomalyEngine;
-
-mbedtls_ecdh_context ecdh_ctx;
-mbedtls_entropy_context entropy;
-mbedtls_ctr_drbg_context ctr_drbg;
-static uint8_t myPublicKey[65]; 
-size_t pubKeyLen;
 
 static char serialCmdBuffer[256];
 static size_t serialCmdPos = 0;
@@ -120,39 +114,29 @@ static size_t serialCmdPos = 0;
 // =============================================================================
 
 void initCryptoAndGenerateKeys() {
-    mbedtls_ecdh_init(&ecdh_ctx);
-    mbedtls_ctr_drbg_init(&ctr_drbg);
-    mbedtls_entropy_init(&entropy);
-    const char *pers = "spectre_gateway";
-    mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy, (const unsigned char *)pers, strlen(pers));
-    mbedtls_ecdh_setup(&ecdh_ctx, MBEDTLS_ECP_DP_SECP256R1);
-    mbedtls_ecdh_make_public(&ecdh_ctx, &pubKeyLen, myPublicKey, sizeof(myPublicKey), mbedtls_ctr_drbg_random, &ctr_drbg);
+    prefs.begin("spectre", false);
+    if (prefs.isKey("net_key")) {
+        size_t len = prefs.getBytes("net_key", primaryAESKey, 32);
+        if (len == 32) {
+            keyExchangeComplete = true;
+        }
+    }
 }
 
-bool deriveSharedAESKey(const uint8_t* peerPublicKey, size_t peerKeyLen) {
-    mbedtls_ecdh_read_public(&ecdh_ctx, peerPublicKey, peerKeyLen);
-    uint8_t sharedSecret[32];
-    size_t secretLen = 0;
-    mbedtls_ecdh_calc_secret(&ecdh_ctx, &secretLen, sharedSecret, sizeof(sharedSecret), mbedtls_ctr_drbg_random, &ctr_drbg);
-    mbedtls_sha256(sharedSecret, secretLen, AES_KEY, 0);
-    keyExchangeComplete = true;
-    return true;
-}
-
-static int aes256Encrypt(const char* plaintext, const uint8_t* iv, uint8_t* ciphertext, uint8_t* tag) {
+static int aes256EncryptWithKey(const uint8_t* key, const char* plaintext, const uint8_t* iv, uint8_t* ciphertext, uint8_t* tag) {
     mbedtls_gcm_context ctx;
     mbedtls_gcm_init(&ctx);
-    mbedtls_gcm_setkey(&ctx, MBEDTLS_CIPHER_ID_AES, AES_KEY, 256);
+    mbedtls_gcm_setkey(&ctx, MBEDTLS_CIPHER_ID_AES, key, 256);
     size_t textLen = strnlen(plaintext, MAX_PAYLOAD_LEN - 1);
     mbedtls_gcm_crypt_and_tag(&ctx, MBEDTLS_GCM_ENCRYPT, textLen, iv, 12, NULL, 0, (const unsigned char*)plaintext, ciphertext, 16, tag);
     mbedtls_gcm_free(&ctx);
     return (int)textLen;
 }
 
-static bool aes256Decrypt(const uint8_t* ciphertext, int len, const uint8_t* iv, const uint8_t* tag, char* plaintext) {
+static bool aes256DecryptWithKey(const uint8_t* key, const uint8_t* ciphertext, int len, const uint8_t* iv, const uint8_t* tag, char* plaintext) {
     mbedtls_gcm_context ctx;
     mbedtls_gcm_init(&ctx);
-    mbedtls_gcm_setkey(&ctx, MBEDTLS_CIPHER_ID_AES, AES_KEY, 256);
+    mbedtls_gcm_setkey(&ctx, MBEDTLS_CIPHER_ID_AES, key, 256);
     int ret = mbedtls_gcm_auth_decrypt(&ctx, len, iv, 12, NULL, 0, tag, 16, ciphertext, (unsigned char*)plaintext);
     mbedtls_gcm_free(&ctx);
     if (ret == 0) {
@@ -160,6 +144,11 @@ static bool aes256Decrypt(const uint8_t* ciphertext, int len, const uint8_t* iv,
         return true;
     }
     return false;
+}
+
+static bool aes256DecryptPacket(const LoRaPacket* pkt, char* plaintext) {
+    if (!keyExchangeComplete) return false;
+    return aes256DecryptWithKey(primaryAESKey, pkt->encrypted, pkt->payloadLen, pkt->iv, pkt->tag, plaintext);
 }
 
 static void jsonEscape(const char* input, char* output, size_t outSize) {
@@ -271,9 +260,16 @@ void taskGatewayRadio(void* pvParameters) {
         if (xQueueReceive(txQueue, &outMsg, 0) == pdPASS) {
             if (outMsg.messageID == 0xFE) { // REKEY
                 LoRaKeyExchangePacket keyPkt;
+                memset(&keyPkt, 0, sizeof(keyPkt));
                 keyPkt.magicByte = 0xAC;
-                keyPkt.pubKeyLen = pubKeyLen;
-                memcpy(keyPkt.publicKey, myPublicKey, pubKeyLen);
+                strncpy(keyPkt.nodeId, NODE_ID, NODE_ID_MAX_LEN - 1);
+                keyPkt.nodeId[NODE_ID_MAX_LEN - 1] = '\0';
+                keyPkt.isResponse = 0;
+                keyPkt.keyLen = 32;
+                esp_fill_random(primaryAESKey, 32);
+                keyExchangeComplete = true;
+                prefs.putBytes("net_key", primaryAESKey, 32);
+                memcpy(keyPkt.sessionKey, primaryAESKey, 32);
                 
                 radio.standby();
                 radio.transmit((uint8_t*)&keyPkt, sizeof(LoRaKeyExchangePacket));
@@ -293,7 +289,8 @@ void taskGatewayRadio(void* pvParameters) {
             strncpy(pkt.nodeId, NODE_ID, NODE_ID_MAX_LEN - 1);
             pkt.nodeId[NODE_ID_MAX_LEN - 1] = '\0';
             esp_fill_random(pkt.iv, 12);
-            int cLen = aes256Encrypt(outMsg.payload, pkt.iv, pkt.encrypted, pkt.tag);
+
+            int cLen = aes256EncryptWithKey(primaryAESKey, outMsg.payload, pkt.iv, pkt.encrypted, pkt.tag);
             pkt.payloadLen = (uint8_t)cLen;
 
             radio.standby();
@@ -312,22 +309,30 @@ void taskGatewayRadio(void* pvParameters) {
             if (radio.readData(buf, rxLen) == RADIOLIB_ERR_NONE) {
                 if (buf[0] == 0xAC) {
                     LoRaKeyExchangePacket* rxKeyPkt = (LoRaKeyExchangePacket*)buf;
-                    deriveSharedAESKey(rxKeyPkt->publicKey, rxKeyPkt->pubKeyLen);
+                    if (rxKeyPkt->keyLen == 32) {
+                        memcpy(primaryAESKey, rxKeyPkt->sessionKey, 32);
+                        keyExchangeComplete = true;
+                        prefs.putBytes("net_key", primaryAESKey, 32);
+                    }
+                    const char* senderNodeId = (rxKeyPkt->nodeId[0] != '\0') ? rxKeyPkt->nodeId : "Unknown-Node";
                     
                     float keRssi = (float)radio.getRSSI();
                     float keSnr  = (float)radio.getSNR();
                     float keAnom = anomalyEngine.computeScore(keRssi, keSnr);
                     Serial.printf(
                         "{\"nodeId\":\"%s\",\"msgId\":0,\"hopCount\":0,\"status\":\"ARMED\",\"posX\":0.0,\"posY\":0.0,\"rssi\":%d,\"snr\":%.2f,\"anomalyScore\":%.4f,\"payload\":\"%s\",\"timestamp\":%lu}\n",
-                        NODE_ID, (int)keRssi, (double)keSnr, (double)keAnom, "SYS: Secure Key Exchanged!", (unsigned long)(millis()/1000)
+                        senderNodeId, (int)keRssi, (double)keSnr, (double)keAnom, 
+                        (rxKeyPkt->isResponse ? "SYS: Node Joined & Armed!" : "SYS: Secure Key Exchanged!"), 
+                        (unsigned long)(millis()/1000)
                     );
+                    // Do NOT transmit RF back — allows field nodes to ack cleanly without RF collision
                 } 
                 else if (buf[0] == 0xAB) {
                     if (!keyExchangeComplete) continue; 
                     LoRaPacket* rxPkt = (LoRaPacket*)buf;
                     char plaintext[MAX_PAYLOAD_LEN];
                     
-                    bool authOk = aes256Decrypt(rxPkt->encrypted, rxPkt->payloadLen, rxPkt->iv, rxPkt->tag, plaintext);
+                    bool authOk = aes256DecryptPacket(rxPkt, plaintext);
                     if (authOk) {
                         char escapedPayload[MAX_PAYLOAD_LEN * 2];
                         jsonEscape(plaintext, escapedPayload, sizeof(escapedPayload));

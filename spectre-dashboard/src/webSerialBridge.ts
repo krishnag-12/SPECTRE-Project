@@ -6,7 +6,7 @@
 
 import type { TelemetryPacket, CommandAck, CommandAttempt } from './types';
 
-const NODE_ID_PATTERN = /^[A-Za-z]+-\d+$/;
+const NODE_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 const COMMAND_TYPES = new Set(['PING', 'REKEY', 'ZERO']);
 const BAUD_RATE = 115200;
 

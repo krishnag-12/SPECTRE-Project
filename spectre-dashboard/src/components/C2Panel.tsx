@@ -25,6 +25,7 @@ interface Props {
   selectedNode: SelectedNode | null;
   onSendCommand: (command: CommandPayload) => void;
   onApproveNode: (nodeId: string) => void;
+  onApproveAll?: () => void;
   onDeselectNode: () => void;
 }
 
@@ -88,6 +89,11 @@ const styles: any = {
     border: '1px solid rgba(57,255,20,0.4)', color: '#39FF14', background: '#111', borderRadius: '3px',
     fontFamily: "'JetBrains Mono', monospace", fontSize: '10px', padding: '4px 8px', cursor: 'pointer',
   },
+  approveAllBtn: {
+    border: '1px solid rgba(57,255,20,0.5)', color: '#39FF14', background: 'rgba(57,255,20,0.1)', borderRadius: '3px',
+    fontFamily: "'JetBrains Mono', monospace", fontSize: '10px', padding: '4px 8px', cursor: 'pointer',
+    transition: 'all 120ms ease',
+  },
 };
 
 function Sparkline({ data, color = '#00FFFF' }: { data: number[]; color?: string }) {
@@ -121,7 +127,7 @@ function Sparkline({ data, color = '#00FFFF' }: { data: number[]; color?: string
   );
 }
 
-export default function C2Panel({ selectedNode, onSendCommand, onApproveNode, onDeselectNode }: Props) {
+export default function C2Panel({ selectedNode, onSendCommand, onApproveNode, onApproveAll, onDeselectNode }: Props) {
   const statusColor = useMemo(() => {
     if (!selectedNode) return '#6B6B6B';
     switch (selectedNode.status) {
@@ -171,6 +177,11 @@ export default function C2Panel({ selectedNode, onSendCommand, onApproveNode, on
               {selectedNode.trustState !== 'trusted' && (
                 <button style={styles.approveBtn} onClick={() => onApproveNode(selectedNode.nodeId)}>
                   APPROVE COMMAND ACCESS
+                </button>
+              )}
+              {onApproveAll && (
+                <button style={styles.approveAllBtn} onClick={onApproveAll} title="Approve trust for all pending nodes">
+                  APPROVE ALL
                 </button>
               )}
             </div>

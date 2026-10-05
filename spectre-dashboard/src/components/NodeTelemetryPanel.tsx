@@ -35,10 +35,12 @@ const styles: any = {
   tableSection: {
     flex: 1,
     overflowY: 'auto',
-    overflowX: 'hidden',
+    overflowX: 'auto',
+    WebkitOverflowScrolling: 'touch',
   },
   table: {
     width: '100%',
+    minWidth: '440px',
     borderCollapse: 'collapse',
     fontFamily: "'JetBrains Mono', monospace",
     fontSize: '10px',
@@ -164,6 +166,19 @@ const styles: any = {
     border: '1px solid #3A3A3A',
     color: '#3A3A3A',
   },
+  approveAllBtn: {
+    background: 'rgba(57, 255, 20, 0.1)',
+    border: '1px solid rgba(57, 255, 20, 0.5)',
+    color: '#39FF14',
+    fontFamily: "'JetBrains Mono', monospace",
+    fontSize: '9px',
+    fontWeight: 600,
+    letterSpacing: '0.8px',
+    padding: '2px 6px',
+    borderRadius: '2px',
+    cursor: 'pointer',
+    transition: 'all 120ms ease',
+  },
   // ---- Event Log Section ----
   logSection: {
     borderTop: '1px solid #2A2A2A',
@@ -214,7 +229,7 @@ const styles: any = {
 function getTimeSince(lastSeen) {
   if (!lastSeen) return null;
   const seconds = Math.floor((Date.now() - lastSeen) / 1000);
-  if (seconds > 30) return 'LOST';
+  if (seconds > 45) return 'LOST';
   return null;
 }
 
@@ -230,22 +245,36 @@ interface Props {
   selectedNodeId: string | null;
   onSelectNode: (nodeId: string) => void;
   onSendCommand: (command: CommandPayload) => void;
+  onApproveAll?: () => void;
   eventLog: EventEntry[];
 }
 
-export default function NodeTelemetryPanel({ nodes, selectedNodeId, onSelectNode, onSendCommand, eventLog }: Props) {
+export default function NodeTelemetryPanel({ nodes, selectedNodeId, onSelectNode, onSendCommand, onApproveAll, eventLog }: Props) {
   const [hoveredRow, setHoveredRow] = useState(null);
   const [logExpanded, setLogExpanded] = useState(true);
   const [confirmKill, setConfirmKill] = useState<string | null>(null);
+
+  const hasPending = nodes.some((n) => n.trustState !== 'trusted');
 
   return (
     <div style={styles.container}>
       {/* Panel Header */}
       <div className="panel-header">
         <span className="panel-header__title">Node Telemetry</span>
-        <span className={`panel-header__badge panel-header__badge--active`}>
-          {nodes.length} NODES
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {hasPending && onApproveAll && (
+            <button
+              style={styles.approveAllBtn}
+              onClick={onApproveAll}
+              title="Approve trust for all pending nodes"
+            >
+              ✓ APPROVE ALL
+            </button>
+          )}
+          <span className={`panel-header__badge panel-header__badge--active`}>
+            {nodes.length} NODES
+          </span>
+        </div>
       </div>
 
       {/* Data Table */}

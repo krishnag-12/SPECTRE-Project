@@ -123,6 +123,99 @@ Based on an architectural review of the `spectre-main` and `spectre-dashboard` d
 - [x] **Zeroization init:** `initZeroize(ZEROIZE_PIN)` called in `setup()` after crypto init.
 - [x] **AES_KEY/keyExchangeComplete:** Removed `static` qualifier for `extern` access from zeroize.h.
 
+---
+
+### Sprint E: GPS-Denied RF Path-Loss Distance & Sector Tracking — 📋 PLANNED
+
+#### Overview
+Replaces vulnerable, foreign-controlled, and easily jammed/spoofed satellite GPS with passive, sovereign RF physics derived directly from the SX1278 hardware layer.
+
+#### 1. Mathematical Path-Loss Model (LoRa Signal Physics)
+Signal attenuation over tactical terrain is computed via the Log-Distance Path Loss Model:
+$$\text{RSSI}(d) = \text{RSSI}_0 - 10 \cdot n \cdot \log_{10}\left(\frac{d}{d_0}\right)$$
+Solving for distance $d$:
+$$d = d_0 \cdot 10^{\frac{\text{RSSI}_0 - \text{RSSI}}{10 \cdot n}}$$
+- $\text{RSSI}_0 \approx -42\text{ dBm}$: Calibrated reference signal at $d_0 = 1\text{ m}$ for SX1278 at $+17\text{ dBm}$ TX power.
+- $n \approx 2.4$: Empirical tactical path loss exponent (suburban/rural foliage & terrain).
+- **Distance Bands**:
+  - $-45$ to $-55\text{ dBm} \rightarrow 15 - 35\text{ m}$ (Inner 50m radar ring)
+  - $-60$ to $-75\text{ dBm} \rightarrow 50 - 90\text{ m}$ (50m–100m radar ring)
+  - $-80$ to $-95\text{ dBm} \rightarrow 120 - 240\text{ m}$ (100m–250m radar ring)
+  - $-100$ to $-115\text{ dBm} \rightarrow 280 - 460\text{ m}$ (250m–500m outer radar ring)
+
+#### 2. Tactical Squad Sector Bearings (SOP Fireteam Radials)
+Field fireteams operate along pre-assigned tactical vectors relative to Command Base (C2):
+- `Alpha-1`: Point / Lead Scout $\rightarrow$ Bearing $045^\circ$ (North-East)
+- `Bravo-2`: Rear Guard / Flank $\rightarrow$ Bearing $225^\circ$ (South-West)
+- `Charlie-3`: Left Flank $\rightarrow$ Bearing $315^\circ$ (North-West)
+- Relative Cartesian Coordinates:
+  $$posX = d \cdot \sin(\theta), \quad posY = d \cdot \cos(\theta)$$
+
+#### 3. Gateway Firmware & Dashboard Integration
+- [ ] In `spectre-c2-gateway/src/main.cpp`: Implement `calculateRfDistance(float rssi)` and sector bearing table.
+- [ ] Replace hardcoded `posX: 0.0, posY: 0.0` with calculated $(posX, posY)$ in all outgoing serial JSON streams.
+- [ ] In `spectre-dashboard/src/components/RadarMap.tsx`: Nodes dynamically move along their assigned radials across distance rings in real-time as physical distance changes.
+
+---
+
+### Sprint F: MPU-6050 Ballistic Shock & Casualty Detection (Automated Dead Man's Switch) — 📋 PLANNED
+
+#### Tactical Problem
+If a soldier is shot dead or incapacitated:
+1. They cannot manually send a Mayday (`TAC MSG 1`) or press a panic zeroize button.
+2. The terminal risks enemy capture, giving adversaries access to cryptographic key material, stored DTN messages, and tactical mesh traffic.
+3. The C2 Command Unit has no immediate automated notification of casualty status to authorize remote zeroization (`CMD:ZERO:<nodeId>`) or dispatch a Quick Reaction Force (QRF).
+
+#### False-Positive Discrimination Challenge
+The sensor must reliably separate lethal ballistic impacts from normal tactical combat dynamics:
+- **Friendly Weapon Recoil**: High momentary acceleration spike ($> 8-16g$), but immediate continuous voluntary soldier movement (aiming, stance retention, posture variance).
+- **Taking Cover / Diving Prone**: Deceleration shock ($3-6g$), but followed by active breathing, crawling, posture adjustments, or weapon tracking.
+- **Close Quarters Combat (CQC)**: Violent multi-axis movement, but continuous high gyroscope/accelerometer variance.
+- **Ballistic Incapacitation Signature**: High-transient kinetic shock $\rightarrow$ uncoordinated collapse trajectory $\rightarrow$ **Prolonged Flaccid Immobility (Atonia)**.
+
+#### 1. Three-Phase State Machine Architecture
+```
+ [ State 0: ACTIVE ]
+         │
+         ▼ (Kinetic Shock: |a| > 12g && da/dt > threshold)
+ [ State 1: BALLISTIC_SHOCK_DETECTED ]
+         │
+         ▼ (Posture Collapse: Gyro delta > 90° pitch/roll change)
+ [ State 2: COLLAPSE_VERIFIED ]
+         │
+         ▼ (Start 12-second Atonia Monitoring Window)
+ [ State 3: MONITORING_ATONIA ] ──────(Motion detected: Var(a) > ε)──────► [ State 0: ACTIVE ] (False Alarm)
+         │
+         ▼ (Zero motion for 12 seconds: Var(a) < ε)
+ [ State 4: CASUALTY_CONFIRMED ]
+         │
+         ├──► Local 5s Haptic/Buzzer Grace Window (Soldier can cancel by pressing any matrix key)
+         │
+         ▼ (Grace window expires)
+ [ State 5: TRANSMIT_KIA_ALERT ]
+         │
+         ├──► Broadcasts encrypted emergency packet: TAC:INCAPACITATED:<NODE_ID>
+         ├──► C2 Dashboard triggers critical alarm + immediate ONE-CLICK ZEROIZE prompt
+         └──► Starts local 45s fail-safe countdown to autonomous hardware self-zeroization
+```
+
+#### 2. Advanced Multi-Sensor Fusion Roadmap
+To achieve defense-grade $>99.9\%$ classification accuracy without false zeroization:
+1. **MPU-6050 6-Axis Motion Engine**:
+   - Accelerometer: $\pm 16g$ dynamic range (I2C address `0x68`, shared with SSD1306 on Wire `GPIO 21/22`).
+   - Digital Low Pass Filter (DLPF) set to 44 Hz to isolate sharp ballistic impulses from human tremors.
+   - Computes rolling variance $\text{Var}(a) = \frac{1}{N} \sum (a_i - \bar{a})^2$ over a 12-second window to detect true post-impact flaccid immobility (atonia).
+2. **Optical PPG Pulse / SpO2 Sensor (MAX30102)**:
+   - Mounted in tactical wrist strap or glove.
+   - Cross-verifies ballistic shock against real-time physiological vitals: sudden pulse cessation / severe arrhythmia confirms immediate casualty.
+3. **Conductive Armor Plate Penetration Mesh**:
+   - Thin conductive trace woven into the soldier's body armor plate carrier connected to a dedicated ESP32 interrupt pin (`GPIO`).
+   - Bullet or shrapnel physically severs the trace $\rightarrow$ instant hardware-level ballistic penetration trigger.
+4. **Body Proximity & Skin Temperature Thermistor**:
+   - Detects if the device has been stripped off the soldier's body (cold drop detection).
+5. **Two-Stage Autonomous Self-Zeroization Protocol**:
+   - If radio is jammed or out-of-range of C2, the terminal enters a local 45-second countdown.
+   - If the soldier does not enter a tactical PIN on the 4x4 matrix before the countdown reaches zero, the ESP32 automatically wipes RAM keys, clears flash preferences, formats SPIFFS, and permanently bricks itself.
 
 ---
 

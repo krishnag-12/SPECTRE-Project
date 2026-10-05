@@ -21,7 +21,7 @@ import type {
   TrustState,
 } from './types';
 
-const NODE_ID_PATTERN = /^[A-Za-z]+-\d+$/;
+const NODE_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 const ACK_TIMEOUT_MS = 5000;
 
 interface NodeTelemetry extends TelemetryPacket {
@@ -56,6 +56,7 @@ type Action =
   | { type: 'BRIDGE_STATS'; payload: BridgeStats }
   | { type: 'LOCAL_DROP'; payload: { reason: string } }
   | { type: 'TRUST_NODE'; payload: { nodeId: string } }
+  | { type: 'TRUST_ALL_NODES' }
   | { type: 'SERIAL_CONNECTED'; payload: { portPath: string | null } }
   | { type: 'SERIAL_DISCONNECTED' };
 
@@ -86,6 +87,11 @@ function telemetryReducer(state: AppState, action: Action): AppState {
       let receivedCount = 0;
 
       action.payload.forEach((packet) => {
+        if (packet.nodeId === 'Gateway-1') {
+          // Gateway-1 is the local C2 receiver base station, not a remote field node
+          return;
+        }
+
         if (!NODE_ID_PATTERN.test(packet.nodeId)) {
           newEvents.unshift({
             id: `node-id-invalid-${Date.now()}-${Math.random()}`,
@@ -251,6 +257,31 @@ function telemetryReducer(state: AppState, action: Action): AppState {
             time: nowTime(),
             severity: 'normal' as const,
             message: `${action.payload.nodeId} approved for command channel`,
+          },
+          ...state.eventLog,
+        ].slice(0, 100),
+      };
+    }
+
+    case 'TRUST_ALL_NODES': {
+      const updatedNodes = { ...state.nodes };
+      let approvedCount = 0;
+      Object.keys(updatedNodes).forEach((id) => {
+        if (updatedNodes[id].trustState !== 'trusted') {
+          updatedNodes[id] = { ...updatedNodes[id], trustState: 'trusted' };
+          approvedCount++;
+        }
+      });
+      if (approvedCount === 0) return state;
+      return {
+        ...state,
+        nodes: updatedNodes,
+        eventLog: [
+          {
+            id: `nodes-trusted-all-${Date.now()}`,
+            time: nowTime(),
+            severity: 'normal' as const,
+            message: `All active nodes (${approvedCount}) approved for command channel`,
           },
           ...state.eventLog,
         ].slice(0, 100),
@@ -451,6 +482,10 @@ export default function App() {
     dispatch({ type: 'TRUST_NODE', payload: { nodeId } });
   }, []);
 
+  const approveAllNodes = useCallback(() => {
+    dispatch({ type: 'TRUST_ALL_NODES' });
+  }, []);
+
   const selectNode = useCallback((nodeId: string | null) => {
     dispatch({ type: 'SELECT_NODE', payload: nodeId });
   }, []);
@@ -475,6 +510,7 @@ export default function App() {
             selectedNodeId={state.selectedNodeId}
             onSelectNode={selectNode}
             onSendCommand={sendCommand}
+            onApproveAll={approveAllNodes}
             eventLog={state.eventLog}
           />
         </div>
@@ -492,6 +528,7 @@ export default function App() {
             selectedNode={selectedNode}
             onSendCommand={sendCommand}
             onApproveNode={approveNode}
+            onApproveAll={approveAllNodes}
             onDeselectNode={() => selectNode(null)}
           />
         </div>

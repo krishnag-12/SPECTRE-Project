@@ -38,6 +38,7 @@
 #if ENABLE_DTN
   #include <SPIFFS.h>
 #endif
+#include <Preferences.h>
 
 // (AceButton removed — input is now via 4x4 matrix keypad, see keypad_matrix.h)
 
@@ -217,6 +218,7 @@ static bool     dtnInitialized = false;
 
 static uint8_t AES_KEY[32] = {0}; 
 static bool keyExchangeComplete = false;
+static Preferences prefs;
 
 mbedtls_ecdh_context ecdh_ctx;
 mbedtls_entropy_context entropy;
@@ -251,8 +253,10 @@ struct __attribute__((packed)) LoRaPacket {
 
 struct __attribute__((packed)) LoRaKeyExchangePacket {
     uint8_t  magicByte;                         
-    uint8_t  pubKeyLen;
-    uint8_t  publicKey[65];
+    char     nodeId[NODE_ID_MAX_LEN];
+    uint8_t  isResponse;                        // 0 = Master broadcast / Rekey, 1 = Auto-response / Ack
+    uint8_t  keyLen;                            // 32
+    uint8_t  sessionKey[32];                    // 256-bit network session key
 };
 
 // =============================================================================
@@ -334,27 +338,15 @@ static size_t serialCmdPos = 0;
 // =============================================================================
 
 void initCryptoAndGenerateKeys() {
-    DEBUG_PRINTLN("[Crypto] Initializing RNG and ECDH...");
-    mbedtls_ecdh_init(&ecdh_ctx);
-    mbedtls_ctr_drbg_init(&ctr_drbg);
-    mbedtls_entropy_init(&entropy);
-    const char *pers = "spectre_rng";
-    mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy, (const unsigned char *)pers, strlen(pers));
-    mbedtls_ecdh_setup(&ecdh_ctx, MBEDTLS_ECP_DP_SECP256R1);
-    mbedtls_ecdh_make_public(&ecdh_ctx, &pubKeyLen, myPublicKey, sizeof(myPublicKey), mbedtls_ctr_drbg_random, &ctr_drbg);
-    DEBUG_PRINTLN("[Crypto] Keys generated successfully.");
-}
-
-bool deriveSharedAESKey(const uint8_t* peerPublicKey, size_t peerKeyLen) {
-    DEBUG_PRINTLN("[Crypto] Deriving shared secret from peer key...");
-    mbedtls_ecdh_read_public(&ecdh_ctx, peerPublicKey, peerKeyLen);
-    uint8_t sharedSecret[32];
-    size_t secretLen = 0;
-    mbedtls_ecdh_calc_secret(&ecdh_ctx, &secretLen, sharedSecret, sizeof(sharedSecret), mbedtls_ctr_drbg_random, &ctr_drbg);
-    mbedtls_sha256(sharedSecret, secretLen, AES_KEY, 0);
-    keyExchangeComplete = true;
-    DEBUG_PRINTLN("[Crypto] AES_KEY derived and locked. Comms are now secure.");
-    return true;
+    DEBUG_PRINTLN("[Crypto] Initializing Crypto & Preferences...");
+    prefs.begin("spectre", false);
+    if (prefs.isKey("net_key")) {
+        size_t len = prefs.getBytes("net_key", AES_KEY, 32);
+        if (len == 32) {
+            keyExchangeComplete = true;
+            DEBUG_PRINTLN("[Crypto] Restored Network Session Key from NVS.");
+        }
+    }
 }
 
 static int aes256Encrypt(const char* plaintext, const uint8_t* iv, uint8_t* ciphertext, uint8_t* tag) {
@@ -915,13 +907,24 @@ void taskRadioAndCrypto(void* pvParameters) {
         // TX: Transmit queued messages
         // =====================================================================
         if (xQueueReceive(txQueue, &outMsg, 0) == pdPASS) {
-            if (outMsg.messageID == 0xFE) {
-                // ECDH Key Exchange — always broadcast on rendezvous channel
-                // with extended sync strobe preamble for guaranteed reception
+            if (outMsg.messageID == 0xFE || outMsg.messageID == 0xFD) {
+                // Key Exchange — broadcast on rendezvous channel
                 LoRaKeyExchangePacket keyPkt;
+                memset(&keyPkt, 0, sizeof(keyPkt));
                 keyPkt.magicByte = 0xAC;
-                keyPkt.pubKeyLen = pubKeyLen;
-                memcpy(keyPkt.publicKey, myPublicKey, pubKeyLen);
+                strncpy(keyPkt.nodeId, NODE_ID, NODE_ID_MAX_LEN - 1);
+                keyPkt.nodeId[NODE_ID_MAX_LEN - 1] = '\0';
+                keyPkt.keyLen = 32;
+                if (outMsg.messageID == 0xFE) {
+                    keyPkt.isResponse = 0;
+                    esp_fill_random(AES_KEY, 32);
+                    keyExchangeComplete = true;
+                    prefs.putBytes("net_key", AES_KEY, 32);
+                    memcpy(keyPkt.sessionKey, AES_KEY, 32);
+                } else {
+                    keyPkt.isResponse = 1;
+                    memcpy(keyPkt.sessionKey, AES_KEY, 32);
+                }
                 
 #if ENABLE_FHSS && !SIMULATOR_MODE
                 // Use sync strobe for key exchange (mesh-join broadcast)
@@ -982,7 +985,11 @@ void taskRadioAndCrypto(void* pvParameters) {
                 if (buf[0] == 0xAC) {
                     // Key Exchange packet received
                     LoRaKeyExchangePacket* rxKeyPkt = (LoRaKeyExchangePacket*)buf;
-                    deriveSharedAESKey(rxKeyPkt->publicKey, rxKeyPkt->pubKeyLen);
+                    if (rxKeyPkt->keyLen == 32) {
+                        memcpy(AES_KEY, rxKeyPkt->sessionKey, 32);
+                        keyExchangeComplete = true;
+                        prefs.putBytes("net_key", AES_KEY, 32);
+                    }
 
 #if ENABLE_FHSS
                     // Seed FHSS CSPRNG now that we have the shared AES key
@@ -992,9 +999,23 @@ void taskRadioAndCrypto(void* pvParameters) {
                     DEBUG_PRINTLN("[FHSS] Synchronized. Beginning channel hopping.");
 #endif
 
+                    // If this was an initial request (isResponse == 0), automatically reply
+                    // with current session key so the network discovers this node.
+                    if (rxKeyPkt->isResponse == 0) {
+                        // Small random backoff (120-300ms) to avoid simultaneous LoRa collisions
+                        vTaskDelay((120 + (esp_random() % 180)) / portTICK_PERIOD_MS);
+                        MessageEvent autoResp;
+                        memset(&autoResp, 0, sizeof(autoResp));
+                        autoResp.messageID = 0xFD; // Auto-response flag (isResponse = 1)
+                        autoResp.hopCount = 1;
+                        snprintf(autoResp.payload, MAX_PAYLOAD_LEN, "KEY_RESP:%s", NODE_ID);
+                        xQueueSend(txQueue, &autoResp, 0);
+                    }
+
                     memset(&inMsg, 0, sizeof(inMsg));
                     inMsg.messageID = 0xFD; 
-                    strncpy(inMsg.payload, "SYS: Secure Key Exchanged!", MAX_PAYLOAD_LEN);
+                    snprintf(inMsg.payload, MAX_PAYLOAD_LEN, "SYS: Key Synced w/ %s",
+                             rxKeyPkt->nodeId[0] != '\0' ? rxKeyPkt->nodeId : "Peer");
                     xQueueSend(rxQueue, &inMsg, 0);
                 } 
                 else if (buf[0] == 0xAB) {
@@ -1021,6 +1042,19 @@ void taskRadioAndCrypto(void* pvParameters) {
                         dtnUpdateNodePresence(senderNodeId);
 #endif
 
+                        // ─── PING COMMAND HANDLER ───────────────────────
+                        if (strncmp(inMsg.payload, "CMD:PING:", 9) == 0) {
+                            const char* targetId = inMsg.payload + 9;
+                            if (strcmp(targetId, NODE_ID) == 0 || targetId[0] == '*' || strncmp(targetId, NODE_ID, strlen(NODE_ID)) == 0) {
+                                MessageEvent pongMsg;
+                                memset(&pongMsg, 0, sizeof(pongMsg));
+                                pongMsg.messageID = 0x91;
+                                pongMsg.hopCount = 2;
+                                snprintf(pongMsg.payload, MAX_PAYLOAD_LEN, "PONG:%s:NOMINAL", NODE_ID);
+                                xQueueSend(txQueue, &pongMsg, 0);
+                            }
+                        }
+
                         // ─── REMOTE ZEROIZATION HANDLER ─────────────────
                         // Check if this is a CMD:ZERO targeting THIS node.
                         // Format: "CMD:ZERO:Alpha-1" — only zeroize if the
@@ -1034,6 +1068,9 @@ void taskRadioAndCrypto(void* pvParameters) {
                                 esp_fill_random(AES_KEY, 32);
                                 // 2. Block further decryption
                                 keyExchangeComplete = false;
+                                prefs.begin("spectre", false);
+                                prefs.clear();
+                                prefs.end();
                                 // 3. Destroy ECDH ephemeral key context
                                 mbedtls_ecdh_free(&ecdh_ctx);
                                 // 4. Destroy CSPRNG state
@@ -1062,7 +1099,10 @@ void taskRadioAndCrypto(void* pvParameters) {
                         }
                         // ─── END REMOTE ZEROIZATION ─────────────────────
 
-                        xQueueSend(rxQueue, &inMsg, 0);
+                        // Don't clutter inbox with background heartbeat telemetry
+                        if (rxPkt->messageID != 0xA0) {
+                            xQueueSend(rxQueue, &inMsg, 0);
+                        }
 #if C2_BRIDGE_MODE
                         char escapedPayload[MAX_PAYLOAD_LEN * 2];
                         jsonEscape(inMsg.payload, escapedPayload, sizeof(escapedPayload));
@@ -1119,6 +1159,38 @@ void taskRadioAndCrypto(void* pvParameters) {
                     }
                 }
             }
+        }
+#endif
+
+        // =====================================================================
+        // PERIODIC HEARTBEAT: Keep C2 dashboard status active
+        // =====================================================================
+#if !SIMULATOR_MODE
+        static uint32_t lastHeartbeatMs = 0;
+        static uint32_t nextHeartbeatInterval = 15000;
+        if (keyExchangeComplete && (millis() - lastHeartbeatMs >= nextHeartbeatInterval)) {
+            lastHeartbeatMs = millis();
+            nextHeartbeatInterval = 14000 + (esp_random() % 3000); // 14-17s random jitter
+            LoRaPacket hbPkt;
+            memset(&hbPkt, 0, sizeof(hbPkt));
+            hbPkt.magicByte  = 0xAB;
+            hbPkt.messageID  = 0xA0; // Heartbeat telemetry ID
+            hbPkt.hopCount   = 1;
+            strncpy(hbPkt.nodeId, NODE_ID, NODE_ID_MAX_LEN - 1);
+            hbPkt.nodeId[NODE_ID_MAX_LEN - 1] = '\0';
+            esp_fill_random(hbPkt.iv, 12);
+            char hbPayload[32];
+            snprintf(hbPayload, sizeof(hbPayload), "HB:%s:NOMINAL", NODE_ID);
+            int hbLen = aes256Encrypt(hbPayload, hbPkt.iv, hbPkt.encrypted, hbPkt.tag);
+            hbPkt.payloadLen = (uint8_t)hbLen;
+
+            radio.standby();
+            size_t pktSize = sizeof(LoRaPacket) - MAX_PAYLOAD_LEN + hbLen;
+            radioState = RADIO_STATE_TX;
+            radio.transmit((uint8_t*)&hbPkt, pktSize);
+            rxFlag = false;
+            configureDioForRx();
+            radio.startReceive();
         }
 #endif
 
