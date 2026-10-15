@@ -125,7 +125,7 @@ Based on an architectural review of the `spectre-main` and `spectre-dashboard` d
 
 ---
 
-### Sprint E: GPS-Denied RF Path-Loss Distance & Sector Tracking — 📋 PLANNED
+### Sprint E: GPS-Denied RF Path-Loss Distance & Sector Tracking — ✅ COMPLETE
 
 #### Overview
 Replaces vulnerable, foreign-controlled, and easily jammed/spoofed satellite GPS with passive, sovereign RF physics derived directly from the SX1278 hardware layer.
@@ -152,9 +152,9 @@ Field fireteams operate along pre-assigned tactical vectors relative to Command 
   $$posX = d \cdot \sin(\theta), \quad posY = d \cdot \cos(\theta)$$
 
 #### 3. Gateway Firmware & Dashboard Integration
-- [ ] In `spectre-c2-gateway/src/main.cpp`: Implement `calculateRfDistance(float rssi)` and sector bearing table.
-- [ ] Replace hardcoded `posX: 0.0, posY: 0.0` with calculated $(posX, posY)$ in all outgoing serial JSON streams.
-- [ ] In `spectre-dashboard/src/components/RadarMap.tsx`: Nodes dynamically move along their assigned radials across distance rings in real-time as physical distance changes.
+- [x] In `spectre-c2-gateway/src/main.cpp`: Implement `calculateRfDistance(float rssi)` and sector bearing table.
+- [x] Replace hardcoded `posX: 0.0, posY: 0.0` with calculated $(posX, posY)$ in all outgoing serial JSON streams.
+- [x] In `spectre-dashboard/src/components/RadarMap.tsx`: Nodes dynamically move along their assigned radials across distance rings in real-time as physical distance changes.
 
 ---
 
@@ -216,6 +216,87 @@ To achieve defense-grade $>99.9\%$ classification accuracy without false zeroiza
 5. **Two-Stage Autonomous Self-Zeroization Protocol**:
    - If radio is jammed or out-of-range of C2, the terminal enters a local 45-second countdown.
    - If the soldier does not enter a tactical PIN on the 4x4 matrix before the countdown reaches zero, the ESP32 automatically wipes RAM keys, clears flash preferences, formats SPIFFS, and permanently bricks itself.
+
+---
+
+### Sprint G: Live Cryptographic Pipeline Inspector & Anti-Tamper Test Bench (AES-256-GCM) — ✅ COMPLETE
+
+#### Academic & Reviewer Requirement
+Project guides and academic evaluators require visible, mathematical proof that communications over the tactical mesh are not plain text strings, but hardware-accelerated **AES-256-GCM** ciphertext protected by a 128-bit authentication tag. Furthermore, evaluators expect an interactive demonstration of **Man-in-the-Middle (MitM) Tamper Detection** to verify that unauthorized bit-flipping over the air is instantly rejected.
+
+#### 1. Architectural Pipeline & Data Flow
+1. **ESP32 Gateway Firmware (`spectre-c2-gateway/src/main.cpp`)**:
+   - Extract and hex-encode raw cryptographic artifacts directly from incoming `LoRaPacket`:
+     - `iv` (12-byte CSPRNG Nonce / Initialization Vector) $\rightarrow$ 24 hex characters.
+     - `tag` (16-byte Galois GMAC Authentication Tag) $\rightarrow$ 32 hex characters.
+     - `encrypted` (Raw ciphertext payload bytes) $\rightarrow$ hex dump string.
+     - `authOk` (mbedTLS GCM verification status: `true` / `false`).
+     - `rawFrameHex` (Complete physical RF frame: `0xAB` Magic Byte, Header, IV, Tag, Ciphertext).
+   - Emit an enriched `crypto` sub-object inside the serial JSON stream.
+2. **Dashboard Bridge & Types (`types.ts`, `webSerialBridge.ts`, `serial-bridge.ts`)**:
+   - Extend `TelemetryPacket` interface with optional `crypto: CryptoTelemetry` block:
+     ```typescript
+     export interface CryptoTelemetry {
+       algo: 'AES-256-GCM';
+       iv: string;
+       tag: string;
+       ciphertext: string;
+       tagMatch: boolean;
+       rawFrameHex?: string;
+     }
+     ```
+   - Retain backward compatibility with existing telemetry streams while parsing extended crypto blocks.
+3. **Dashboard UI: Live Cryptographic Pipeline Inspector Modal / Panel**:
+   - **6-Stage Visual Pipeline**:
+     - *Stage 1:* Over-the-Air LoRa RF Frame Ingestion (`0xAB` Magic Byte, Message ID, Node ID).
+     - *Stage 2:* CSPRNG 96-bit Nonce / IV Extraction (`esp_fill_random` output).
+     - *Stage 3:* AES-256 Galois Counter Mode (GCM) Ciphertext Stream (Hex Dump).
+     - *Stage 4:* Galois Authentication Tag (128-bit GMAC) Integrity Verification (`AUTHENTICATED ✓`).
+     - *Stage 5:* Hardware Decryption & Plaintext Recovery (`mbedtls` hardware engine on ESP32).
+   - **Interactive 1-Bit Ciphertext Tamper Sandbox**:
+     - Allows evaluator or student to type arbitrary plaintext and encrypt it in real time.
+     - One-click **"Flip 1 Bit in Ciphertext"** button (e.g., `0x9C` $\rightarrow$ `0x9D`).
+     - Live Galois Hash (GHASH) verification failure: `[ ❌ CRITICAL: GMAC AUTHENTICATION TAG MISMATCH // TAMPER DETECTED ]`.
+     - Packet dropped immediately without processing, proving defense against replay and MitM modifications.
+
+---
+
+### Sprint H: Live Edge-AI Jamming Analysis & EW Threat Simulation Console (Isolation Forest) — ✅ COMPLETE
+
+#### Evaluator Problem in Benign Laboratory Environments
+In a standard college laboratory, the ambient RF spectrum is quiet and unjammed (ambient $\text{RSSI} \approx -70\text{ dBm}, \text{SNR} \approx +8.5\text{ dB}$), resulting in a low nominal anomaly score ($0.30 - 0.38$, `CLEAR`). Without high-power RF jammers (which are illegal and restricted in civilian environments), evaluators cannot see the ML model detecting attacks live.
+
+#### 1. Architectural Pipeline & Diagnostics
+1. **ESP32 Gateway Firmware (`spectre-c2-gateway/src/main.cpp` & `anomaly_engine.h`)**:
+   - Expose the 8 engineered RF features extracted from SX1278 hardware registers in serial JSON:
+     - $f_0$: `rssi` (dBm)
+     - $f_1$: `snr` (dB)
+     - $f_2$: `noise_floor` ($\text{RSSI} - \text{SNR}$)
+     - $f_3$: `rssi_delta` ($\Delta\text{RSSI}$)
+     - $f_4$: `noise_floor_delta` ($\Delta\text{NF}$)
+     - $f_5$: `rssi_roll_mean_10` (10-packet rolling mean)
+     - $f_6$: `rssi_roll_std_10` (10-packet rolling standard deviation)
+     - $f_7$: `nf_roll_std_10` (10-packet noise floor rolling standard deviation)
+   - Expose tree traversal metrics:
+     - 100-tree Average Path Length $E(h(x))$, normalization constant $c(n) = 11.45$, raw anomaly score, and EWMA smoothed score ($\alpha = 0.3$).
+   - Implement serial command `CMD:TEST_JAM:<MODE>`: Ingests synthetic RF values directly into the ESP32 microcontroller's C++ `AnomalyEngine`, proving execution happens on the physical chip.
+2. **Dashboard UI: Edge-AI EW Threat Console Modal / Panel**:
+   - **Live 8-Feature Vector Cards & Gauges**: Dynamic visualization of all 8 features with normal vs anomalous thresholds.
+   - **Isolation Forest Tree Metrics & Score Dial**:
+     - Visual dial gauge ($0.0 \rightarrow 1.0$) with 4-tier tactical threat classification:
+       - $s < 0.60$: 🟢 **CLEAR / NOMINAL**
+       - $0.60 \le s < 0.75$: 🟡 **ELEVATED / SUSPICIOUS**
+       - $0.75 \le s < 0.85$: 🟠 **SPOT / PULSE JAMMING PROBABLE**
+       - $s \ge 0.85$: 🔴 **BARRAGE JAMMING ACTIVE (CRITICAL EW THREAT)**
+   - **Real-Time Moving Anomaly Timeline Graph**: Visualizing score trends with color-coded threat zones.
+   - **Interactive EW Attack Injector / Test Bench (Live Demo Mode)**:
+     - Button 1: **[Inject Barrage Jamming]** — High noise floor ($>-50\text{ dBm}$), SNR crashes ($<-10\text{ dB}$) $\rightarrow$ score spikes to $0.93$ $\rightarrow$ flashes red alarm and sounds tactical warning.
+     - Button 2: **[Inject Spot Jamming]** — Targeted channel degradation, sudden $\Delta\text{RSSI} > 25\text{ dBm}$ $\rightarrow$ score climbs to $0.82$.
+     - Button 3: **[Inject Pulse Jamming]** — Intermittent power bursts, high $\sigma_{\text{NF}}$ $\rightarrow$ score oscillates around $0.78$.
+     - Button 4: **[Clear Spectrum / Restore Nominal]** — Returns to ambient baseline $\rightarrow$ EWMA smoothing filter smoothly decays score back to green ($< 0.40$).
+   - **Physical Hardware Demonstration Guide**:
+     - Faraday attenuation test (wrapping transmitter antenna in aluminum foil to induce sharp RSSI drops and variance spikes).
+     - Channel contention test (rapid concurrent key exchange broadcasts to induce packet collisions and SNR collapse).
 
 ---
 

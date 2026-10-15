@@ -2,7 +2,7 @@
 **Secure Portable Encrypted Communication Terminal for Remote Environments**
 
 ![Status](https://img.shields.io/badge/Status-Active_R%26D-brightgreen)
-![Version](https://img.shields.io/badge/Version-2.0_Prototype-blue)
+![Version](https://img.shields.io/badge/Version-2.2_Prototype-blue)
 ![Platform](https://img.shields.io/badge/Hardware-ESP32-orange)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey)
 
@@ -17,7 +17,9 @@ By leveraging Long Range (LoRa) Chirp Spread Spectrum (CSS) modulation and a dua
 *   **Zero-Trust Cryptography (COMSEC):** Executes dynamic Elliptic-Curve Diffie-Hellman (ECDH) key exchanges on the SECP256R1 curve. Payloads are authenticated and encrypted via AES-256-GCM to prevent traffic analysis, spoofing, and replay attacks.
 *   **Cryptographic FHSS (ECCM):** Frequency-Hopping Spread Spectrum across a 15-channel pool, with the hop schedule derived from the shared AES-256 secret via a CSPRNG. Combined with CSS modulation's processing gain, this resists narrowband jamming and enables successful demodulation below the thermal noise floor.
 *   **Low Probability of Detection (LPD):** Mathematical optimization of physical layer parameters (SF7, 250 kHz Bandwidth) compresses fully encrypted tactical payloads into sub-100-millisecond transmission bursts, severely degrading adversary Radio Direction Finding (RDF) capabilities.
-*   **Edge-AI Jamming Detection (EW):** A lightweight Isolation Forest (100 trees) trained on 8 engineered RF features (RSSI, SNR, noise floor, deltas, rolling statistics) runs real-time inference on the C2 gateway. Each received packet produces an `anomalyScore` (0.0–1.0) with EWMA smoothing, enabling the dashboard to display tiered EW threat levels (LOW/MEDIUM/HIGH) and trigger automated alerts.
+*   **Edge-AI Jamming Detection (EW):** A lightweight Isolation Forest (100 trees) trained on 8 engineered RF features (RSSI, SNR, noise floor, deltas, rolling statistics) runs real-time inference on the C2 gateway. Each received packet produces an `anomalyScore` (0.0–1.0) with EWMA smoothing, enabling the dashboard to display tiered EW threat levels (CLEAR/ELEVATED/SPOT/BARRAGE) and trigger automated alerts.
+*   **Live Cryptographic Pipeline Inspector:** Full 5-stage real-time inspection of AES-256-GCM decryption artifacts (RF Frame Ingestion $\rightarrow$ 96-bit Nonce/IV $\rightarrow$ Ciphertext Hex Dump $\rightarrow$ 128-bit GMAC Tag $\rightarrow$ Plaintext Recovery) with an interactive 1-bit tamper test sandbox for evaluator verification.
+*   **GPS-Denied Tactical Radar (RF Path-Loss Tracking):** Eliminates foreign satellite dependency by deriving distance from a calibrated log-distance path loss model ($n=2.4$) and squad sector bearings (`Alpha-1` $045^\circ$, `Bravo-2` $225^\circ$, `Charlie-3` $315^\circ$), dynamically positioning nodes across concentric radar rings.
 *   **Anti-Tamper Zeroization:** Commander-directed remote kill capability from the TCC dashboard. Authenticated LoRa kill commands (`CMD:ZERO`) remotely target compromised field nodes to instantly wipe all cryptographic material — AES-256 symmetric key, ECDH ephemeral context, CSPRNG state — with random noise overwrite, permanently halting the device and preventing cold-boot key extraction.
 
 ## ⚙️ System Architecture
@@ -95,12 +97,18 @@ Tactical Quick Message payloads use the standard `LoRaPacket` structure with mes
    pio run --target upload
    ```
 
-## 📈 Future R&D Roadmap
+## 📈 R&D Roadmap & Implementation Status
 
-The current prototype is undergoing continuous evaluation to bridge the gap toward defense-readiness.
+The prototype has progressed across multiple development sprints to achieve defense-grade evaluation standards:
 
-* [x] **ML-Based Jamming Detection:** Edge-AI Isolation Forest inference (100 trees, 8 features) on the C2 gateway computes real-time `anomalyScore` for every received packet.
-* [x] **Anti-Tamper Security:** GPIO-triggered Zeroization ISR instantly wipes AES keys, ECDH contexts, and CSPRNG state upon physical breach.
+* [x] **Sprint A — Physical Layer & Cryptographic Handshake:** SX1278 LoRa bring-up, ECDH (SECP256R1) asymmetric key exchange, AES-256-GCM authenticated encryption.
+* [x] **Sprint B — Multi-Hop Tactical Mesh & DTN:** Store-and-Forward flood routing, flash-persisted Store-Carry-Forward queue on SPIFFS with data mule dumps.
+* [x] **Sprint C — 9 Tactical Quick Messages & C2 Dashboard:** 4x4 matrix keypad input, 9 Indian military operational commands, Electron/Vite C2 dashboard with Web Serial bridge.
+* [x] **Sprint D — Edge-AI Jamming Detection & Zeroization:** 100-tree Isolation Forest on ESP32, remote C2 kill switch and hardware panic button ISR zeroization.
+* [x] **Sprint E — GPS-Denied RF Path-Loss Tracking:** Log-distance path loss model ($n=2.4$) and squad SOP sector bearings driving dynamic radial radar tracking.
+* [x] **Sprint G — Live Cryptographic Pipeline Inspector:** 5-stage AES-256-GCM verification pipeline and interactive 1-bit ciphertext tamper sandbox.
+* [x] **Sprint H — Edge-AI EW Threat Simulation Console:** 8-feature RF gauges, score dial, 60-packet moving timeline, and serial EW attack injector test bench (`BARRAGE`, `SPOT`, `PULSE`, `CLEAR`).
+* [ ] **Sprint F — MPU-6050 Ballistic Shock & Casualty Detection:** 6-axis accelerometer/gyroscope atonia detection for automated dead-man's zeroization (Planned).
 
 ## 👥 Core Development Team
 

@@ -153,6 +153,48 @@ static inline float ifComputeScore(const float scaled[IF_N_FEATURES]) {
 }
 
 // ---------------------------------------------------------------------------
+// Sprint H: Detailed Anomaly Result — exposes ML internals for dashboard
+// ---------------------------------------------------------------------------
+struct AnomalyResult {
+    float features[IF_N_FEATURES]; // 8 raw engineered features
+    float avgPathLength;           // Average tree traversal depth
+    float rawScore;                // Pre-EWMA anomaly score
+    float ewmaScore;               // Post-EWMA smoothed score
+    bool  ready;                   // Ring buffer fully populated
+};
+
+// ---------------------------------------------------------------------------
+// Isolation Forest Inference — detailed version returning path length
+// ---------------------------------------------------------------------------
+static inline float ifComputeScoreDetailed(const float scaled[IF_N_FEATURES], float* avgPathOut) {
+    float totalPathLength = 0.0f;
+
+    for (int t = 0; t < IF_N_TREES; t++) {
+        int node = 0;
+        int depth = 0;
+        int treeSize = IF_TREE_SIZES[t];
+
+        while (node >= 0 && node < treeSize) {
+            const IFNode& n = IF_TREES[t][node];
+            if (n.feature < 0) break;   // leaf node (feature == -2)
+            if (scaled[n.feature] <= n.threshold) {
+                node = n.left;
+            } else {
+                node = n.right;
+            }
+            depth++;
+        }
+        totalPathLength += (float)depth;
+    }
+
+    float avgPath = totalPathLength / (float)IF_N_TREES;
+    if (avgPathOut) *avgPathOut = avgPath;
+
+    float score = powf(2.0f, -avgPath / IF_C_N);
+    return score;
+}
+
+// ---------------------------------------------------------------------------
 // Anomaly Engine — top-level API combining all components
 // ---------------------------------------------------------------------------
 class AnomalyEngine {
@@ -160,35 +202,49 @@ public:
     AnomalyEngine()
         : ewmaScore_(0.0f), initialized_(false) {}
 
-    // Main entry point: feed raw RSSI and SNR, get anomaly score 0.0–1.0
+    // Simple entry point: feed raw RSSI and SNR, get anomaly score 0.0–1.0
     float computeScore(float rssi, float snr) {
-        float features[IF_N_FEATURES];
+        AnomalyResult r = computeScoreDetailed(rssi, snr);
+        return r.ewmaScore;
+    }
 
-        bool ready = extractor_.update(rssi, snr, features);
+    // Detailed entry point: returns full ML pipeline internals
+    AnomalyResult computeScoreDetailed(float rssi, float snr) {
+        AnomalyResult result;
+        memset(&result, 0, sizeof(result));
+
+        bool ready = extractor_.update(rssi, snr, result.features);
+        result.ready = ready;
+
         if (!ready) {
-            // Ring buffer not yet full — return safe default
-            return 0.0f;
+            result.avgPathLength = 0.0f;
+            result.rawScore = 0.0f;
+            result.ewmaScore = 0.0f;
+            return result;
         }
 
-        // Normalize
-        scalerTransform(features);
+        // Normalize (operates on a copy for inference; keep raw for output)
+        float scaled[IF_N_FEATURES];
+        memcpy(scaled, result.features, sizeof(scaled));
+        scalerTransform(scaled);
 
-        // Inference
-        float rawScore = ifComputeScore(features);
+        // Inference with path length capture
+        result.rawScore = ifComputeScoreDetailed(scaled, &result.avgPathLength);
 
         // Clamp to [0.0, 1.0]
-        if (rawScore < 0.0f) rawScore = 0.0f;
-        if (rawScore > 1.0f) rawScore = 1.0f;
+        if (result.rawScore < 0.0f) result.rawScore = 0.0f;
+        if (result.rawScore > 1.0f) result.rawScore = 1.0f;
 
         // EWMA smoothing (alpha = 0.3)
         if (!initialized_) {
-            ewmaScore_ = rawScore;
+            ewmaScore_ = result.rawScore;
             initialized_ = true;
         } else {
-            ewmaScore_ = 0.3f * rawScore + 0.7f * ewmaScore_;
+            ewmaScore_ = 0.3f * result.rawScore + 0.7f * ewmaScore_;
         }
 
-        return ewmaScore_;
+        result.ewmaScore = ewmaScore_;
+        return result;
     }
 
 private:

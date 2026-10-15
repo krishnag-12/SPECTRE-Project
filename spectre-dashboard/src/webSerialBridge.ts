@@ -7,7 +7,7 @@
 import type { TelemetryPacket, CommandAck, CommandAttempt } from './types';
 
 const NODE_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
-const COMMAND_TYPES = new Set(['PING', 'REKEY', 'ZERO']);
+const COMMAND_TYPES = new Set(['PING', 'REKEY', 'ZERO', 'TEST_JAM']);
 const BAUD_RATE = 115200;
 
 // ---- Packet validation (mirrors electron/serial-bridge.ts) ----

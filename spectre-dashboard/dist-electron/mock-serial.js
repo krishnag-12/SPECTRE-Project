@@ -31,6 +31,13 @@ function startMockStream(httpServer) {
             }
             const isJammed = Math.random() > 0.95;
             const rssiJitter = Math.floor(Math.random() * 15);
+            const rssi = isJammed ? node.baseRssi - 25 - rssiJitter : node.baseRssi - rssiJitter;
+            const snr = isJammed
+                ? parseFloat((Math.random() * 2).toFixed(1))
+                : parseFloat((6 + Math.random() * 5).toFixed(1));
+            const anomalyScore = isJammed
+                ? parseFloat((0.8 + Math.random() * 0.2).toFixed(2))
+                : parseFloat((Math.random() * 0.2).toFixed(2));
             return {
                 nodeId: node.nodeId,
                 msgId: tickCount * 10 + nodes.indexOf(node),
@@ -38,17 +45,29 @@ function startMockStream(httpServer) {
                 status: isJammed ? 'COMPROMISED' : node.status,
                 posX: parseFloat(node.posX.toFixed(2)),
                 posY: parseFloat(node.posY.toFixed(2)),
-                rssi: isJammed ? node.baseRssi - 25 - rssiJitter : node.baseRssi - rssiJitter,
-                snr: isJammed
-                    ? parseFloat((Math.random() * 2).toFixed(1))
-                    : parseFloat((6 + Math.random() * 5).toFixed(1)),
-                anomalyScore: isJammed
-                    ? parseFloat((0.8 + Math.random() * 0.2).toFixed(2))
-                    : parseFloat((Math.random() * 0.2).toFixed(2)),
+                rssi,
+                snr,
+                anomalyScore,
                 payload: isJammed
                     ? '▲ LINK CORRUPTED // JAMMING DETECTED'
                     : 'Secured heartbeat transmission nominal.',
                 timestamp: Math.floor(Date.now() / 1000),
+                crypto: {
+                    algo: 'AES-256-GCM',
+                    iv: 'A1B2C3D4E5F6789012345678',
+                    tag: isJammed ? 'E0A27351C9B381924F829B12DC4819A0' : '4F829B12DC4819E0A27351C9B38192A0',
+                    ciphertext: '7D8F9A01B2C3445566778899AABBCCDDEEFF00112233445566778899',
+                    tagMatch: !isJammed,
+                },
+                ml: {
+                    f: [rssi, snr, rssi - snr, 0.4, -0.2, rssi + 1.2, isJammed ? 8.4 : 1.2, isJammed ? 6.1 : 0.8],
+                    avgPath: isJammed ? 4.12 : 11.25,
+                    rawScore: isJammed ? 0.82 : 0.18,
+                    ewma: anomalyScore,
+                    cn: 11.45,
+                    trees: 100,
+                    ready: true,
+                },
             };
         });
         ioServer.emit('telemetry_matrix', telemetryPackets);
@@ -58,6 +77,17 @@ function startMockStream(httpServer) {
         socket.on('command', (cmd) => {
             if (!cmd?.commandId || !cmd?.nodeId || !cmd?.type)
                 return;
+            if (cmd.type === 'TEST_JAM') {
+                socket.emit('command_ack', {
+                    commandId: cmd.commandId,
+                    nodeId: cmd.nodeId,
+                    type: 'TEST_JAM',
+                    success: true,
+                    outcomeCode: 'INJECTED',
+                    timestamp: Math.floor(Date.now() / 1000),
+                });
+                return;
+            }
             const targetNode = nodes.find((n) => n.nodeId === cmd.nodeId);
             const ack = {
                 commandId: cmd.commandId,

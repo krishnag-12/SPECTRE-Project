@@ -290,3 +290,23 @@ html, body, #root {
 .uppercase { text-transform: uppercase; }
 .tracking-wide { letter-spacing: 1.5px; }
 .tracking-wider { letter-spacing: 2.5px; }
+
+/* ---- Tactical Military Scrollbars ---- */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #0B0B0B;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb {
+  background: #2E2E2E;
+  border-radius: 4px;
+  border: 1px solid #1A1A1A;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #00FFFF;
+  box-shadow: 0 0 8px rgba(0, 255, 255, 0.5);
+}
+

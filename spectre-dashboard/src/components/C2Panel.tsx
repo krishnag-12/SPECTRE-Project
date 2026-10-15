@@ -4,7 +4,7 @@
 
 import React, { useMemo } from 'react';
 import ZeroizeSwitch from './ZeroizeSwitch';
-import type { CommandPayload, TrustState } from '../types';
+import type { CommandPayload, TrustState, CryptoTelemetry, MlTelemetry } from '../types';
 
 type SelectedNode = {
   nodeId: string;
@@ -19,6 +19,8 @@ type SelectedNode = {
   payload: string;
   history: number[];
   trustState: TrustState;
+  crypto?: CryptoTelemetry;
+  ml?: MlTelemetry;
 };
 
 interface Props {
@@ -27,6 +29,8 @@ interface Props {
   onApproveNode: (nodeId: string) => void;
   onApproveAll?: () => void;
   onDeselectNode: () => void;
+  onOpenCrypto?: () => void;
+  onOpenJamming?: () => void;
 }
 
 const styles: any = {
@@ -127,7 +131,15 @@ function Sparkline({ data, color = '#00FFFF' }: { data: number[]; color?: string
   );
 }
 
-export default function C2Panel({ selectedNode, onSendCommand, onApproveNode, onApproveAll, onDeselectNode }: Props) {
+export default function C2Panel({
+  selectedNode,
+  onSendCommand,
+  onApproveNode,
+  onApproveAll,
+  onDeselectNode,
+  onOpenCrypto,
+  onOpenJamming,
+}: Props) {
   const statusColor = useMemo(() => {
     if (!selectedNode) return '#6B6B6B';
     switch (selectedNode.status) {
@@ -215,6 +227,26 @@ export default function C2Panel({ selectedNode, onSendCommand, onApproveNode, on
             >
               ◈ ECDH RE-KEY
             </button>
+          </div>
+
+          <div style={styles.commandSection}>
+            <span style={styles.sectionLabel}>Deep Telemetry Inspectors</span>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <button
+                style={{ ...styles.commandBtn, borderColor: 'rgba(0, 255, 255, 0.4)', color: '#00FFFF', fontSize: '9px', height: '32px' }}
+                onClick={onOpenCrypto}
+                title="Inspect live AES-256-GCM pipeline & 1-bit tamper test bench"
+              >
+                🔐 CRYPTO PIPELINE
+              </button>
+              <button
+                style={{ ...styles.commandBtn, borderColor: 'rgba(167, 139, 250, 0.4)', color: '#A78BFA', fontSize: '9px', height: '32px' }}
+                onClick={onOpenJamming}
+                title="Inspect Edge-AI 8-feature gauges & EW attack injection console"
+              >
+                📡 EW / ML CONSOLE
+              </button>
+            </div>
           </div>
 
           <div style={styles.divider} />

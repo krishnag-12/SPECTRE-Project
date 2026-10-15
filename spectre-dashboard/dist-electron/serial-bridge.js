@@ -3,7 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const { Server } = require('socket.io');
 const { SerialPort } = require('serialport');
 const NODE_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
-const COMMAND_TYPES = new Set(['PING', 'REKEY', 'ZERO']);
+const COMMAND_TYPES = new Set(['PING', 'REKEY', 'ZERO', 'TEST_JAM']);
 function isFiniteNumber(value) {
     return typeof value === 'number' && Number.isFinite(value);
 }

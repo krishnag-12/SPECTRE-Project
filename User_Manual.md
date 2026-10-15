@@ -1,7 +1,7 @@
 # S.P.E.C.T.R.E. — Field Operator's User Manual
 
 **Secure Portable Encrypted Communication Terminal for Remote Environments**
-**Version 2.0 | Firmware Build: Sprint C**
+**Version 2.2 | Firmware Build: Sprints E, G, H (Edge-AI EW, Crypto Inspector & RF Radar)**
 
 ---
 
@@ -250,32 +250,116 @@ S.P.E.C.T.R.E. implements a **Store-Carry-Forward** protocol that guarantees eve
 
 ---
 
-## 11. EW Threat Detection (Edge-AI Jamming Detection)
+---
 
-The C2 gateway runs a real-time **Isolation Forest anomaly detection engine** on every received packet. The engine analyzes 8 RF features (RSSI, SNR, noise floor, deltas, and rolling statistics) to compute an `anomalyScore` between 0.0 and 1.0.
+## 11. Edge-AI Jamming Analysis & EW Threat Simulation Console (Sprint H)
 
-### Dashboard Threat Levels
+S.P.E.C.T.R.E. integrates an on-device **Edge-AI Electronic Warfare (EW) Anomaly Engine** running a 100-tree **Isolation Forest** directly on the ESP32 dual-core microcontroller in bare-metal C++. It inspects every received LoRa packet to detect hostile barrage, spot, and pulse jamming without relying on any external cloud or server inference.
 
-| anomalyScore | Level | Dashboard Color | Meaning |
-|--------------|-------|-----------------|---------|
-| 0.0 – 0.4 | CLEAR | Green | Normal RF environment |
-| 0.4 – 0.7 | LOW | Olive | Minor RF anomaly detected |
-| 0.7 – 0.85 | MEDIUM | Amber | Probable jamming — investigate |
-| > 0.85 | HIGH | Red | Active jamming — take action |
+### How the EW Engine Works
 
-### EW THREAT Alert
+1. **Hardware RF Feature Extraction**:
+   When the SX1278 transceiver receives an over-the-air frame, the microcontroller extracts 8 engineered physical features directly from hardware registers:
+   * **$f_0$ — RSSI (dBm)**: Received Signal Strength Indicator (typically $-90$ to $-50\text{ dBm}$).
+   * **$f_1$ — SNR (dB)**: Signal-to-Noise Ratio (typically $+2$ to $+12\text{ dB}$).
+   * **$f_2$ — Noise Floor (dBm)**: Background RF noise floor, calculated as $\text{RSSI} - \text{SNR}$.
+   * **$f_3$ — $\Delta\text{RSSI}$ (dB)**: Instantaneous signal jump between consecutive packets.
+   * **$f_4$ — $\Delta\text{Noise Floor}$ (dB)**: Instantaneous jump in background noise.
+   * **$f_5$ — Rolling Mean RSSI (dBm)**: 10-packet rolling signal strength average.
+   * **$f_6$ — Rolling StdDev RSSI**: 10-packet standard deviation measuring signal flutter.
+   * **$f_7$ — Rolling StdDev Noise Floor**: 10-packet noise floor fluctuation.
 
-When `anomalyScore > 0.7`, the dashboard automatically triggers an **EW THREAT** alert with the affected node ID, anomaly score, and RSSI reading.
+2. **Isolation Forest Tree Traversal on ESP32**:
+   * The ESP32 passes the standardized 8-feature vector through **100 pre-trained decision trees** stored in flash memory.
+   * Anomalous jamming frames require very few tree splits to isolate, yielding a low average path length $E(h(x))$.
+   * The chip calculates the mathematical anomaly score:
+     $$s(x, n) = 2^{-\frac{E(h(x))}{c(n)}}$$
+     where $c(n) = 11.45$ is the harmonic normalization constant.
+   * An **Exponential Weighted Moving Average (EWMA)** filter ($\alpha = 0.3$) smooths transient noise:
+     $$s_{\text{EWMA}} = \alpha \cdot s_{\text{raw}} + (1 - \alpha) \cdot s_{\text{prev}}$$
 
-### Cold Start
+3. **4-Tier Tactical Threat Classification**:
 
-The anomaly engine returns `0.0` for the first 10 received packets while it populates its statistical ring buffer. This prevents false alarms during gateway boot.
+| Anomaly Score | Threat Level | Badge Color | Tactical Interpretation |
+| :--- | :--- | :--- | :--- |
+| **$< 0.60$** | **CLEAR: NOMINAL** | 🟢 Green | Clean tactical spectrum; communications nominal. |
+| **$0.60 - 0.75$** | **ELEVATED: SUSPICIOUS** | 🟡 Yellow | Elevated background noise or multipath degradation. |
+| **$0.75 - 0.85$** | **SPOT / PULSE JAMMING** | 🟠 Orange | Probable targeted channel jamming or burst interference. |
+| **$\ge 0.85$** | **BARRAGE JAMMING ACTIVE** | 🔴 Red | Full-spectrum high-power noise flood; COMSEC threat. |
 
-**No operator action is required.** The anomaly engine runs autonomously on the gateway.
+4. **Accessing the EW Console**:
+   * Click **`📡 EW / ML CONSOLE`** in the dashboard top TitleBar, or click **`📡 EW / ML CONSOLE`** in the right-hand C2 Panel for the active node.
+   * **Live 8-Feature Vector Gauges**: Real-time slider bars show where current RF parameters sit relative to nominal vs. danger thresholds.
+   * **Anomaly Score Dial**: Large digital readout displays current EWMA score, tree traversal depth, and formula.
+   * **60-Packet Timeline Graph**: Moving canvas chart plots historical scores against color-coded threat zones.
+
+5. **EW Attack Injector Live Demo Test Bench**:
+   Because high-power RF jammers are illegal and prohibited in civilian college laboratories, the console features an interactive **EW Attack Injector** for evaluator demonstrations:
+   * **`BARRAGE JAMMING`**: Sends `CMD:TEST_JAM:BARRAGE` to the ESP32. The microcontroller feeds synthetic high-power noise ($\text{RSSI} \approx -35\text{ dBm}, \text{SNR} \approx -14\text{ dB}, \text{NF} \approx -21\text{ dBm}$) into the physical C++ `AnomalyEngine`, causing the score to spike to $>0.85$ and triggering critical tactical alarms.
+   * **`SPOT JAMMING`**: Sends `CMD:TEST_JAM:SPOT` to simulate targeted single-channel degradation ($\Delta\text{RSSI} > 25\text{ dB}$).
+   * **`PULSE JAMMING`**: Sends `CMD:TEST_JAM:PULSE` to simulate rapid intermittent power bursts ($\text{Roll }\sigma_{\text{NF}} > 20$).
+   * **`CLEAR SPECTRUM`**: Sends `CMD:TEST_JAM:CLEAR` to restore nominal ambient baseline. Evaluators can watch the EWMA filter smoothly decay the score back down to green ($< 0.40$).
 
 ---
 
-## 12. Anti-Tamper Zeroization (Remote Kill)
+## 12. Live Cryptographic Pipeline Inspector & Anti-Tamper Sandbox (Sprint G)
+
+To provide evaluators with visible proof that communications are authenticated using defense-grade **AES-256-GCM** with a 128-bit authentication tag, the dashboard includes a live **Cryptographic Pipeline Inspector**.
+
+### 5-Stage Cryptographic Pipeline
+
+Click **`🔐 CRYPTO PIPELINE`** on the TitleBar or C2 Panel to open the inspector:
+
+1. **Stage 1 — Over-the-Air LoRa RF Frame Ingestion**:
+   * Inspects the raw physical header (`0xAB` Magic Byte, Message ID, Hop Count, and Sender Node ID).
+2. **Stage 2 — CSPRNG 96-Bit Nonce / IV Extraction**:
+   * Displays the 12-byte (24 hex char) unique Initialization Vector generated per packet by the ESP32 hardware True Random Number Generator (`esp_fill_random()`).
+3. **Stage 3 — AES-256 Galois Counter Mode (GCM) Ciphertext**:
+   * Formatted hex dump of the encrypted payload bytes over the air, proving no plaintext leaves the antenna.
+4. **Stage 4 — Galois Authentication Tag (GMAC 128-Bit)**:
+   * Displays the 16-byte (32 hex char) Galois authentication tag and verifies mbedTLS hardware integrity: `✔ AUTHENTICATED`.
+5. **Stage 5 — Hardware Decryption & Plaintext Recovery**:
+   * Displays the decrypted ASCII message recovered by the ESP32 microcontroller after tag verification passes.
+
+### Interactive 1-Bit Ciphertext Tamper Sandbox
+
+Evaluators can test Man-in-the-Middle (MitM) bit-flipping resilience live:
+1. Scroll to the **TEST: 1-BIT CIPHERTEXT TAMPER SANDBOX** at the bottom of the modal.
+2. Click **`🔧 FLIP 1 BIT IN CIPHERTEXT`**.
+3. Select any byte index (e.g., Byte #3) to invert its least-significant bit (`0x9C` $\rightarrow$ `0x9D`).
+4. **Result**: The dashboard immediately flashes:
+   ```
+   ❌ CRITICAL: GMAC AUTHENTICATION TAG MISMATCH // TAMPER DETECTED — PACKET REJECTED & DROPPED
+   ```
+5. **Academic Explanation**: AES-256-GCM uses polynomial multiplication over the Galois field $\text{GF}(2^{128})$. Flipping even a single bit in the ciphertext produces a completely divergent Galois Hash (GHASH) digest, resulting in an unrecoverable tag mismatch. The packet is destroyed immediately before parsing.
+
+---
+
+## 13. GPS-Denied Tactical Radar & RF Path-Loss Tracking (Sprint E)
+
+S.P.E.C.T.R.E. eliminates dependency on foreign-controlled, vulnerable satellite GPS by utilizing passive RF physics directly from the LoRa transceiver.
+
+### Log-Distance Path-Loss Model
+
+Distance between field nodes and the C2 base station is derived from received signal strength:
+$$d = d_0 \cdot 10^{\frac{\text{RSSI}_0 - \text{RSSI}}{10 \cdot n}}$$
+* **$\text{RSSI}_0 \approx -42\text{ dBm}$**: Calibrated 1-meter reference signal at $+17\text{ dBm}$ TX power.
+* **$n \approx 2.4$**: Tactical path-loss exponent for rural/woodland terrain.
+
+### SOP Fireteam Sector Bearings
+
+Field squads advance along assigned tactical vectors:
+* **`Alpha-1`**: Point Scout $\rightarrow$ Bearing $045^\circ$ (North-East radial)
+* **`Bravo-2`**: Rear Guard $\rightarrow$ Bearing $225^\circ$ (South-West radial)
+* **`Charlie-3`**: Left Flank $\rightarrow$ Bearing $315^\circ$ (North-West radial)
+
+Relative Cartesian coordinates are calculated automatically:
+$$posX = d \cdot \sin(\theta), \quad posY = d \cdot \cos(\theta)$$
+Nodes dynamically reposition on the dashboard's central Radar Map across concentric 50m, 100m, 250m, and 500m rings as physical distance changes.
+
+---
+
+## 14. Anti-Tamper Zeroization (Remote Kill)
 
 S.P.E.C.T.R.E. includes a **remote cryptographic kill switch** that allows the commander to selectively destroy a compromised field node's encryption keys from the dashboard.
 
@@ -306,7 +390,7 @@ S.P.E.C.T.R.E. includes a **remote cryptographic kill switch** that allows the c
 
 ---
 
-## 13. Device Modes & Compile-Time Configuration
+## 15. Device Modes & Compile-Time Configuration
 
 The firmware behavior is controlled by `#define` flags at the top of `spectre-main/src/main.cpp`:
 
@@ -320,7 +404,7 @@ The firmware behavior is controlled by `#define` flags at the top of `spectre-ma
 
 ---
 
-## 14. Hardware Pin Wiring Reference
+## 16. Hardware Pin Wiring Reference
 
 ### Field Node (spectre-main)
 
@@ -359,7 +443,7 @@ The firmware behavior is controlled by `#define` flags at the top of `spectre-ma
 
 ---
 
-## 15. Status Bar Reference
+## 17. Status Bar Reference
 
 The top bar of the OLED display shows system status:
 
@@ -373,7 +457,7 @@ The top bar of the OLED display shows system status:
 
 ---
 
-## 16. Troubleshooting
+## 18. Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
@@ -387,7 +471,7 @@ The top bar of the OLED display shows system status:
 
 ---
 
-## 17. Safety & Legal Notice
+## 19. Safety & Legal Notice
 
 - S.P.E.C.T.R.E. operates on the **433 MHz ISM band** which is subject to local spectrum regulations.
 - **1% duty cycle** restrictions apply in civilian deployments. The FHSS implementation distributes transmissions across 15 channels to maximize legal throughput.

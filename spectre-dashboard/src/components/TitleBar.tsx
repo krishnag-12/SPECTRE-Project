@@ -11,6 +11,8 @@ interface Props {
   serialPort: string | null;
   onSerialConnect: () => void;
   onSerialDisconnect: () => void;
+  onOpenCrypto?: () => void;
+  onOpenJamming?: () => void;
 }
 
 const styles: Record<string, any> = {
@@ -172,7 +174,15 @@ function getStatusStyle(serialState: SerialConnectionState, connected: boolean) 
   return styles.statusDisconnected;
 }
 
-export default function TitleBar({ connected, serialState, serialPort, onSerialConnect, onSerialDisconnect }: Props) {
+export default function TitleBar({
+  connected,
+  serialState,
+  serialPort,
+  onSerialConnect,
+  onSerialDisconnect,
+  onOpenCrypto,
+  onOpenJamming,
+}: Props) {
   const [time, setTime] = useState('');
   const [hoveredBtn, setHoveredBtn] = useState(null);
 
@@ -246,6 +256,36 @@ export default function TitleBar({ connected, serialState, serialPort, onSerialC
             ⚡ CONNECT
           </button>
         )}
+
+        <div style={{ width: '1px', height: '16px', background: '#2A2A2A', margin: '0 4px' }} />
+
+        {/* Sprint G: Live Crypto Inspector */}
+        <button
+          style={{
+            ...styles.serialBtn,
+            color: '#00FFFF',
+            borderColor: 'rgba(0, 255, 255, 0.4)',
+            background: 'rgba(0, 255, 255, 0.08)',
+          }}
+          onClick={onOpenCrypto}
+          title="Inspect live AES-256-GCM encryption pipeline & 1-bit tamper test bench"
+        >
+          🔐 CRYPTO PIPELINE
+        </button>
+
+        {/* Sprint H: Edge-AI EW Threat Console */}
+        <button
+          style={{
+            ...styles.serialBtn,
+            color: '#A78BFA',
+            borderColor: 'rgba(167, 139, 250, 0.4)',
+            background: 'rgba(167, 139, 250, 0.08)',
+          }}
+          onClick={onOpenJamming}
+          title="Open live ML RF anomaly gauges & EW attack injection console"
+        >
+          📡 EW / ML CONSOLE
+        </button>
       </div>
 
       <div style={styles.rightSection}>

@@ -9,6 +9,8 @@ import NodeTelemetryPanel from './components/NodeTelemetryPanel';
 import RadarMap from './components/RadarMap';
 import C2Panel from './components/C2Panel';
 import StatusBar from './components/StatusBar';
+import CryptoInspector from './components/CryptoInspector';
+import JammingConsole from './components/JammingConsole';
 import { WebSerialBridge } from './webSerialBridge';
 import type { SerialConnectionState } from './webSerialBridge';
 import type {
@@ -340,6 +342,8 @@ export default function App() {
   const timeoutMapRef = useRef<Record<string, number>>({});
   const [serialState, setSerialState] = useState<SerialConnectionState>('disconnected');
   const [serialPortName, setSerialPortName] = useState<string | null>(null);
+  const [showCryptoModal, setShowCryptoModal] = useState(false);
+  const [showJammingModal, setShowJammingModal] = useState(false);
 
   // Detect if we're running in Electron (has Socket.IO backend) or browser-only
   const isElectron = !!window.spectre;
@@ -452,10 +456,13 @@ export default function App() {
 
   // ---- Send command (works with both Socket.IO and Web Serial) ----
   const sendCommand = useCallback((cmd: CommandPayload) => {
-    const selectedNode = state.nodes[cmd.nodeId];
-    if (!selectedNode || selectedNode.trustState !== 'trusted') {
-      dispatch({ type: 'LOCAL_DROP', payload: { reason: `command blocked for untrusted node ${cmd.nodeId}` } });
-      return;
+    // For TEST_JAM diagnostic command, bypass node trust check
+    if (cmd.type !== 'TEST_JAM') {
+      const selectedNode = state.nodes[cmd.nodeId];
+      if (!selectedNode || selectedNode.trustState !== 'trusted') {
+        dispatch({ type: 'LOCAL_DROP', payload: { reason: `command blocked for untrusted node ${cmd.nodeId}` } });
+        return;
+      }
     }
 
     const commandId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -501,6 +508,8 @@ export default function App() {
         serialPort={serialPortName}
         onSerialConnect={handleSerialConnect}
         onSerialDisconnect={handleSerialDisconnect}
+        onOpenCrypto={() => setShowCryptoModal(true)}
+        onOpenJamming={() => setShowJammingModal(true)}
       />
 
       <div className="tcc-main">
@@ -530,11 +539,37 @@ export default function App() {
             onApproveNode={approveNode}
             onApproveAll={approveAllNodes}
             onDeselectNode={() => selectNode(null)}
+            onOpenCrypto={() => setShowCryptoModal(true)}
+            onOpenJamming={() => setShowJammingModal(true)}
           />
         </div>
       </div>
 
       <StatusBar stats={state.stats} nodeCount={nodesArray.length} />
+
+      {/* Sprint G: Live AES-256-GCM Cryptographic Pipeline Inspector */}
+      {showCryptoModal && (
+        <CryptoInspector
+          crypto={selectedNode?.crypto || Object.values(state.nodes).find((n) => n.crypto)?.crypto || null}
+          nodeId={selectedNode?.nodeId || Object.values(state.nodes)[0]?.nodeId || 'Alpha-1'}
+          payload={selectedNode?.payload || Object.values(state.nodes)[0]?.payload || 'TAC: L1 NORMAL'}
+          onClose={() => setShowCryptoModal(false)}
+        />
+      )}
+
+      {/* Sprint H: Edge-AI Jamming Analysis & EW Threat Console */}
+      {showJammingModal && (
+        <JammingConsole
+          ml={selectedNode?.ml || Object.values(state.nodes).find((n) => n.ml)?.ml || null}
+          anomalyScore={selectedNode?.anomalyScore ?? Object.values(state.nodes)[0]?.anomalyScore ?? 0.0}
+          rssi={selectedNode?.rssi ?? Object.values(state.nodes)[0]?.rssi ?? -70}
+          snr={selectedNode?.snr ?? Object.values(state.nodes)[0]?.snr ?? 8}
+          nodeId={selectedNode?.nodeId || Object.values(state.nodes)[0]?.nodeId || 'GATEWAY'}
+          onSendCommand={sendCommand}
+          onClose={() => setShowJammingModal(false)}
+        />
+      )}
+
       <div className="crt-overlay" />
     </div>
   );

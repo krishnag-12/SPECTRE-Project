@@ -1,8 +1,10 @@
 // =============================================================================
-// S.P.E.C.T.R.E. - DEDICATED C2 GATEWAY FIRMWARE (Sprint A + D)
+// S.P.E.C.T.R.E. - DEDICATED C2 GATEWAY FIRMWARE (Sprint A + D + E + G + H)
 // Headless node for Commander's Dashboard.
 // Features: JSON Telemetry Bridge, Command Ingestion, AES-256 GCM,
-//           Edge-AI Jamming Detection (IF), Anti-Tamper Zeroization.
+//           Edge-AI Jamming Detection (IF), Anti-Tamper Zeroization,
+//           RF Path-Loss Distance Estimation (E), Crypto Inspector (G),
+//           ML Diagnostics & EW Attack Simulation (H).
 // =============================================================================
 
 #include <Arduino.h>
@@ -60,6 +62,46 @@
 #define NODE_ID_MAX_LEN   16
 
 // =============================================================================
+// SPRINT E: RF PATH-LOSS DISTANCE ESTIMATION CONSTANTS
+// =============================================================================
+// Log-Distance Path Loss Model:
+//   d = d0 * 10^((RSSI0 - RSSI) / (10 * n))
+// RSSI0: Calibrated reference RSSI at d0 = 1 meter (SX1278 @ +17 dBm TX)
+// n: Path loss exponent for tactical terrain (suburban/rural/foliage)
+// =============================================================================
+
+#define RSSI_REF_1M     (-42.0f)  // RSSI at 1 meter reference distance
+#define PATH_LOSS_EXP   (2.4f)    // Empirical tactical exponent
+#define MAX_DISPLAY_RANGE 500.0f  // Maximum radar display range in meters
+
+// =============================================================================
+// SPRINT E: SECTOR BEARING TABLE (Fireteam Radials)
+// =============================================================================
+// Pre-assigned tactical vectors relative to C2 Command Post
+// =============================================================================
+
+struct SectorEntry {
+    const char* nodeId;
+    float bearingDeg;  // Degrees from True North (clockwise)
+};
+
+static const SectorEntry SECTOR_TABLE[] = {
+    { "Alpha-1",   45.0f  },  // NE — Point / Lead Scout
+    { "Alpha-2",   60.0f  },  // ENE
+    { "Bravo-1",  210.0f  },  // SSW
+    { "Bravo-2",  225.0f  },  // SW — Rear Guard / Flank
+    { "Charlie-1", 300.0f },  // WNW
+    { "Charlie-2", 315.0f },  // NW — Left Flank
+    { "Delta-1",  135.0f  },  // SE
+    { "Delta-2",  150.0f  },  // SSE
+};
+static const int SECTOR_TABLE_SIZE = sizeof(SECTOR_TABLE) / sizeof(SECTOR_TABLE[0]);
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846f
+#endif
+
+// =============================================================================
 // DATA STRUCTURES
 // =============================================================================
 
@@ -103,11 +145,61 @@ volatile bool rxFlag = false;
 
 bool keyExchangeComplete = false;
 
-// Sprint D: Edge-AI Anomaly Detection Engine
+// Sprint D+H: Edge-AI Anomaly Detection Engine
 static AnomalyEngine anomalyEngine;
 
 static char serialCmdBuffer[256];
 static size_t serialCmdPos = 0;
+
+// =============================================================================
+// SPRINT E: RF DISTANCE & POSITION HELPERS
+// =============================================================================
+
+static float calculateRfDistance(float rssi) {
+    // d = d0 * 10^((RSSI0 - RSSI) / (10 * n))
+    float exponent = (RSSI_REF_1M - rssi) / (10.0f * PATH_LOSS_EXP);
+    float distance = powf(10.0f, exponent);
+    // Clamp to display range
+    if (distance < 0.5f) distance = 0.5f;
+    if (distance > MAX_DISPLAY_RANGE) distance = MAX_DISPLAY_RANGE;
+    return distance;
+}
+
+static float getNodeBearing(const char* nodeId) {
+    for (int i = 0; i < SECTOR_TABLE_SIZE; i++) {
+        if (strncmp(nodeId, SECTOR_TABLE[i].nodeId, NODE_ID_MAX_LEN) == 0) {
+            return SECTOR_TABLE[i].bearingDeg;
+        }
+    }
+    // Unknown node: assign a hash-based bearing for visual spread
+    uint32_t hash = 0;
+    for (int i = 0; nodeId[i] != '\0' && i < NODE_ID_MAX_LEN; i++) {
+        hash = hash * 31 + (uint8_t)nodeId[i];
+    }
+    return (float)(hash % 360);
+}
+
+static void calculatePosition(float rssi, const char* nodeId, float* posX, float* posY) {
+    float distance = calculateRfDistance(rssi);
+    float bearingDeg = getNodeBearing(nodeId);
+    float bearingRad = bearingDeg * M_PI / 180.0f;
+    // posX = d * sin(θ), posY = d * cos(θ)
+    *posX = distance * sinf(bearingRad);
+    *posY = distance * cosf(bearingRad);
+}
+
+// =============================================================================
+// SPRINT G: HEX DUMP HELPER FOR CRYPTO TELEMETRY
+// =============================================================================
+
+static void hexDump(const uint8_t* data, size_t len, char* out, size_t outSize) {
+    size_t j = 0;
+    for (size_t i = 0; i < len && j + 2 < outSize; i++) {
+        out[j++] = "0123456789abcdef"[data[i] >> 4];
+        out[j++] = "0123456789abcdef"[data[i] & 0x0F];
+    }
+    out[j] = '\0';
+}
 
 // =============================================================================
 // CRYPTO HELPERS
@@ -168,11 +260,46 @@ static void jsonEscape(const char* input, char* output, size_t outSize) {
 }
 
 // =============================================================================
+// SPRINT G+H: ENRICHED JSON EMISSION HELPERS
+// =============================================================================
+
+// Emit the "crypto" JSON sub-object for Sprint G
+static void emitCryptoJson(const LoRaPacket* pkt, bool authOk) {
+    char ivHex[25];    // 12 bytes = 24 hex chars + null
+    char tagHex[33];   // 16 bytes = 32 hex chars + null
+    char cipherHex[MAX_PAYLOAD_LEN * 2 + 1];
+    
+    hexDump(pkt->iv, 12, ivHex, sizeof(ivHex));
+    hexDump(pkt->tag, 16, tagHex, sizeof(tagHex));
+    hexDump(pkt->encrypted, pkt->payloadLen, cipherHex, sizeof(cipherHex));
+    
+    Serial.printf(
+        ",\"crypto\":{\"algo\":\"AES-256-GCM\",\"iv\":\"%s\",\"tag\":\"%s\",\"ciphertext\":\"%s\",\"tagMatch\":%s}",
+        ivHex, tagHex, cipherHex, authOk ? "true" : "false"
+    );
+}
+
+// Emit the "ml" JSON sub-object for Sprint H
+static void emitMlJson(const AnomalyResult& ar) {
+    Serial.printf(
+        ",\"ml\":{\"f\":[%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f],"
+        "\"avgPath\":%.2f,\"rawScore\":%.4f,\"ewma\":%.4f,"
+        "\"cn\":%.2f,\"trees\":%d,\"ready\":%s}",
+        (double)ar.features[0], (double)ar.features[1], (double)ar.features[2],
+        (double)ar.features[3], (double)ar.features[4], (double)ar.features[5],
+        (double)ar.features[6], (double)ar.features[7],
+        (double)ar.avgPathLength, (double)ar.rawScore, (double)ar.ewmaScore,
+        (double)IF_C_N, IF_N_TREES, ar.ready ? "true" : "false"
+    );
+}
+
+// =============================================================================
 // SERIAL BRIDGE LOGIC
 // =============================================================================
 
 static bool isSupportedCommandType(const char* type) {
-    return strcmp(type, "PING") == 0 || strcmp(type, "REKEY") == 0 || strcmp(type, "ZERO") == 0;
+    return strcmp(type, "PING") == 0 || strcmp(type, "REKEY") == 0 || strcmp(type, "ZERO") == 0
+           || strcmp(type, "TEST_JAM") == 0;  // Sprint H: EW test command
 }
 
 static void emitCommandAck(const char* commandId, const char* nodeId, const char* type, bool success, const char* outcomeCode) {
@@ -185,6 +312,46 @@ static void emitCommandAck(const char* commandId, const char* nodeId, const char
         outcomeCode,
         (unsigned long)(millis() / 1000)
     );
+}
+
+// Sprint H: Handle EW test jamming simulation
+static void handleTestJam(const char* mode, const char* commandId) {
+    float testRssi, testSnr;
+    
+    if (strcmp(mode, "BARRAGE") == 0) {
+        testRssi = -35.0f;  testSnr = -14.0f;   // High noise, negative SNR
+    } else if (strcmp(mode, "SPOT") == 0) {
+        testRssi = -95.0f;  testSnr = -5.0f;    // Deep signal loss
+    } else if (strcmp(mode, "PULSE") == 0) {
+        testRssi = -50.0f;  testSnr = -2.0f;    // Intermittent burst
+    } else if (strcmp(mode, "CLEAR") == 0) {
+        testRssi = -72.0f;  testSnr = 8.5f;     // Normal ambient
+    } else {
+        emitCommandAck(commandId, "Gateway-1", "TEST_JAM", false, "UNKNOWN_MODE");
+        return;
+    }
+    
+    // Feed synthetic values into the REAL ML engine on the ESP32 chip
+    AnomalyResult ar = anomalyEngine.computeScoreDetailed(testRssi, testSnr);
+    
+    float posX = 0.0f, posY = 0.0f;
+    
+    // Emit a full telemetry packet with ML diagnostics
+    Serial.printf(
+        "{\"nodeId\":\"EW-SIM\",\"msgId\":0,\"hopCount\":0,"
+        "\"status\":\"ACTIVE\",\"posX\":%.1f,\"posY\":%.1f,"
+        "\"rssi\":%d,\"snr\":%.2f,\"anomalyScore\":%.4f,"
+        "\"payload\":\"EW TEST: %s injection via ESP32 AnomalyEngine\","
+        "\"timestamp\":%lu",
+        (double)posX, (double)posY,
+        (int)testRssi, (double)testSnr, (double)ar.ewmaScore,
+        mode,
+        (unsigned long)(millis() / 1000)
+    );
+    emitMlJson(ar);
+    Serial.println("}");
+    
+    emitCommandAck(commandId, "EW-SIM", "TEST_JAM", true, "INJECTED");
 }
 
 static bool queueBridgeCommand(const char* type, const char* targetNodeId) {
@@ -211,8 +378,13 @@ static void handleBridgeSerialLine(char* line) {
         return;
     }
 
+    // Make a copy since strtok_r modifies the buffer
+    char lineCopy[256];
+    strncpy(lineCopy, line, sizeof(lineCopy) - 1);
+    lineCopy[sizeof(lineCopy) - 1] = '\0';
+
     char* savePtr = nullptr;
-    char* token = strtok_r(line, ":", &savePtr);
+    char* token = strtok_r(lineCopy, ":", &savePtr);
     char* type = strtok_r(nullptr, ":", &savePtr);
     char* targetNodeId = strtok_r(nullptr, ":", &savePtr);
     char* commandId = strtok_r(nullptr, ":", &savePtr);
@@ -225,6 +397,13 @@ static void handleBridgeSerialLine(char* line) {
         emitCommandAck(commandId, targetNodeId, type, false, "UNSUPPORTED_COMMAND");
         return;
     }
+    
+    // Sprint H: Handle EW test injection locally (no RF transmission needed)
+    if (strcmp(type, "TEST_JAM") == 0) {
+        handleTestJam(targetNodeId, commandId);  // targetNodeId field holds the mode (BARRAGE/SPOT/PULSE/CLEAR)
+        return;
+    }
+    
     if (!keyExchangeComplete && strcmp(type, "REKEY") != 0) {
         emitCommandAck(commandId, targetNodeId, type, false, "NOT_ARMED");
         return;
@@ -318,13 +497,23 @@ void taskGatewayRadio(void* pvParameters) {
                     
                     float keRssi = (float)radio.getRSSI();
                     float keSnr  = (float)radio.getSNR();
-                    float keAnom = anomalyEngine.computeScore(keRssi, keSnr);
+                    AnomalyResult keAr = anomalyEngine.computeScoreDetailed(keRssi, keSnr);
+                    
+                    // Sprint E: Calculate position from RSSI + bearing
+                    float kePosX = 0.0f, kePosY = 0.0f;
+                    calculatePosition(keRssi, senderNodeId, &kePosX, &kePosY);
+                    
                     Serial.printf(
-                        "{\"nodeId\":\"%s\",\"msgId\":0,\"hopCount\":0,\"status\":\"ARMED\",\"posX\":0.0,\"posY\":0.0,\"rssi\":%d,\"snr\":%.2f,\"anomalyScore\":%.4f,\"payload\":\"%s\",\"timestamp\":%lu}\n",
-                        senderNodeId, (int)keRssi, (double)keSnr, (double)keAnom, 
+                        "{\"nodeId\":\"%s\",\"msgId\":0,\"hopCount\":0,\"status\":\"ARMED\","
+                        "\"posX\":%.1f,\"posY\":%.1f,\"rssi\":%d,\"snr\":%.2f,"
+                        "\"anomalyScore\":%.4f,\"payload\":\"%s\",\"timestamp\":%lu",
+                        senderNodeId, (double)kePosX, (double)kePosY,
+                        (int)keRssi, (double)keSnr, (double)keAr.ewmaScore, 
                         (rxKeyPkt->isResponse ? "SYS: Node Joined & Armed!" : "SYS: Secure Key Exchanged!"), 
                         (unsigned long)(millis()/1000)
                     );
+                    emitMlJson(keAr);
+                    Serial.println("}");
                     // Do NOT transmit RF back — allows field nodes to ack cleanly without RF collision
                 } 
                 else if (buf[0] == 0xAB) {
@@ -337,6 +526,15 @@ void taskGatewayRadio(void* pvParameters) {
                         char escapedPayload[MAX_PAYLOAD_LEN * 2];
                         jsonEscape(plaintext, escapedPayload, sizeof(escapedPayload));
                         const char* packetNodeId = rxPkt->nodeId[0] != '\0' ? rxPkt->nodeId : "Unknown-0";
+
+                        // Sprint E: Calculate position
+                        float rxRssi = (float)radio.getRSSI();
+                        float rxSnr  = (float)radio.getSNR();
+                        float rxPosX = 0.0f, rxPosY = 0.0f;
+                        calculatePosition(rxRssi, packetNodeId, &rxPosX, &rxPosY);
+                        
+                        // Sprint H: Get detailed ML result
+                        AnomalyResult rxAr = anomalyEngine.computeScoreDetailed(rxRssi, rxSnr);
 
                         // Detect Tactical messages (payload starts with "TAC:L")
                         bool isTac = (strncmp(plaintext, "TAC:L", 5) == 0
@@ -356,41 +554,49 @@ void taskGatewayRadio(void* pvParameters) {
                                     tacTarget[tLen] = '\0';
                                 }
                             }
-                            float tacRssi = (float)radio.getRSSI();
-                            float tacSnr  = (float)radio.getSNR();
-                            float tacAnom = anomalyEngine.computeScore(tacRssi, tacSnr);
                             Serial.printf(
                                 "{\"kind\":\"tactical\",\"nodeId\":\"%s\",\"msgId\":%u,\"hopCount\":%u,"
                                 "\"tacLine\":%u,\"tacMode\":\"%c\",\"tacTarget\":\"%s\","
-                                "\"status\":\"ACTIVE\",\"posX\":0.0,\"posY\":0.0,\"rssi\":%d,\"snr\":%.2f,"
-                                "\"anomalyScore\":%.4f,\"payload\":\"%s\",\"timestamp\":%lu}\n",
+                                "\"status\":\"ACTIVE\",\"posX\":%.1f,\"posY\":%.1f,\"rssi\":%d,\"snr\":%.2f,"
+                                "\"anomalyScore\":%.4f,\"payload\":\"%s\",\"timestamp\":%lu",
                                 packetNodeId,
                                 (unsigned int)rxPkt->messageID,
                                 (unsigned int)rxPkt->hopCount,
                                 (unsigned int)tacLine,
                                 modeChar,
                                 tacTarget,
-                                (int)tacRssi,
-                                (double)tacSnr,
-                                (double)tacAnom,
+                                (double)rxPosX, (double)rxPosY,
+                                (int)rxRssi,
+                                (double)rxSnr,
+                                (double)rxAr.ewmaScore,
                                 escapedPayload,
                                 (unsigned long)(millis() / 1000)
                             );
+                            // Sprint G: Append crypto telemetry
+                            emitCryptoJson(rxPkt, authOk);
+                            // Sprint H: Append ML diagnostics
+                            emitMlJson(rxAr);
+                            Serial.println("}");
                         } else {
-                            float rxRssi = (float)radio.getRSSI();
-                            float rxSnr  = (float)radio.getSNR();
-                            float rxAnom = anomalyEngine.computeScore(rxRssi, rxSnr);
                             Serial.printf(
-                                "{\"nodeId\":\"%s\",\"msgId\":%u,\"hopCount\":%u,\"status\":\"ACTIVE\",\"posX\":0.0,\"posY\":0.0,\"rssi\":%d,\"snr\":%.2f,\"anomalyScore\":%.4f,\"payload\":\"%s\",\"timestamp\":%lu}\n",
+                                "{\"nodeId\":\"%s\",\"msgId\":%u,\"hopCount\":%u,"
+                                "\"status\":\"ACTIVE\",\"posX\":%.1f,\"posY\":%.1f,\"rssi\":%d,\"snr\":%.2f,"
+                                "\"anomalyScore\":%.4f,\"payload\":\"%s\",\"timestamp\":%lu",
                                 packetNodeId,
                                 (unsigned int)rxPkt->messageID,
                                 (unsigned int)rxPkt->hopCount,
+                                (double)rxPosX, (double)rxPosY,
                                 (int)rxRssi,
                                 (double)rxSnr,
-                                (double)rxAnom,
+                                (double)rxAr.ewmaScore,
                                 escapedPayload,
                                 (unsigned long)(millis() / 1000)
                             );
+                            // Sprint G: Append crypto telemetry
+                            emitCryptoJson(rxPkt, authOk);
+                            // Sprint H: Append ML diagnostics
+                            emitMlJson(rxAr);
+                            Serial.println("}");
                         }
                     }
                 }
