@@ -140,6 +140,22 @@ function telemetryReducer(state: AppState, action: Action): AppState {
             message: `${packet.nodeId} status → ${packet.status}`,
           });
         }
+
+        const isRoutineHeartbeat = packet.payload.startsWith('HB:');
+        const isNewPayload = !prev || prev.payload !== packet.payload || prev.msgId !== packet.msgId;
+
+        if (!isRoutineHeartbeat && isNewPayload && packet.payload.trim().length > 0) {
+          const isTac = packet.payload.startsWith('TAC:');
+          const isSys = packet.payload.startsWith('SYS:');
+          const isPong = packet.payload.startsWith('PONG:');
+          const isEw = packet.payload.startsWith('EW TEST:');
+          newEvents.unshift({
+            id: `payload-${packet.nodeId}-${packet.msgId}-${Date.now()}-${Math.random()}`,
+            time: nowTime(),
+            severity: isEw ? 'warning' : isTac ? 'normal' : isSys ? 'warning' : 'normal',
+            message: `${isTac ? '📡 TAC' : isSys ? '🔐 SYS' : isPong ? '✦ PONG' : isEw ? '⚡ EW' : '💬 MSG'} [${packet.nodeId}]: ${packet.payload}`,
+          });
+        }
       });
 
       if (newEvents.length > 100) newEvents.length = 100;

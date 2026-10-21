@@ -419,9 +419,14 @@ The firmware behavior is controlled by `#define` flags at the top of `spectre-ma
 | GPIO 19 | SX1278 MISO | SPI Master In |
 | GPIO 21 | SSD1306 SDA | I2C Data |
 | GPIO 22 | SSD1306 SCL | I2C Clock |
-| GPIO 32 | Button (UP) | Pull-up, active LOW |
-| GPIO 33 | Button (DOWN) | Pull-up, active LOW |
-| GPIO 25 | Button (SELECT) | Pull-up, active LOW |
+| GPIO 32 | 4x4 Keypad Row R1 | OUTPUT, active LOW |
+| GPIO 33 | 4x4 Keypad Row R2 | OUTPUT, active LOW |
+| GPIO 25 | 4x4 Keypad Row R3 | OUTPUT, active LOW |
+| GPIO 4  | 4x4 Keypad Row R4 | OUTPUT, active LOW |
+| GPIO 16 | 4x4 Keypad Col C1 | INPUT_PULLUP (S1: UP, S5: TQM2, S9: TQM6, S13) |
+| GPIO 17 | 4x4 Keypad Col C2 | INPUT_PULLUP (S2: DOWN, S6: TQM3, S10: TQM7, S14) |
+| GPIO 13 | 4x4 Keypad Col C3 | INPUT_PULLUP (S3: SELECT, S7: TQM4, S11: TQM8, S15) |
+| GPIO 27 | 4x4 Keypad Col C4 | INPUT_PULLUP (S4: TQM1, S8: TQM5, S12: TQM9, S16) |
 | 3V3 | SX1278 VCC, SSD1306 VCC | Power rail |
 | GND | All GND pins | Common ground |
 

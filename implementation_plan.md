@@ -158,7 +158,7 @@ Field fireteams operate along pre-assigned tactical vectors relative to Command 
 
 ---
 
-### Sprint F: MPU-6050 Ballistic Shock & Casualty Detection (Automated Dead Man's Switch) — 📋 PLANNED
+### Sprint F: MPU-6050 Ballistic Shock & Casualty Detection (Automated Dead Man's Switch) — ⏸️ ON HOLD (Deferred Future Scope)
 
 #### Tactical Problem
 If a soldier is shot dead or incapacitated:

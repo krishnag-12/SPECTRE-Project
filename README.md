@@ -1,8 +1,8 @@
 # S.P.E.C.T.R.E.
 **Secure Portable Encrypted Communication Terminal for Remote Environments**
 
-![Status](https://img.shields.io/badge/Status-Active_R%26D-brightgreen)
-![Version](https://img.shields.io/badge/Version-2.2_Prototype-blue)
+![Status](https://img.shields.io/badge/Status-Complete_(Current_Scope)-brightgreen)
+![Version](https://img.shields.io/badge/Version-2.2_Stabilized-blue)
 ![Platform](https://img.shields.io/badge/Hardware-ESP32-orange)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey)
 
@@ -108,7 +108,7 @@ The prototype has progressed across multiple development sprints to achieve defe
 * [x] **Sprint E — GPS-Denied RF Path-Loss Tracking:** Log-distance path loss model ($n=2.4$) and squad SOP sector bearings driving dynamic radial radar tracking.
 * [x] **Sprint G — Live Cryptographic Pipeline Inspector:** 5-stage AES-256-GCM verification pipeline and interactive 1-bit ciphertext tamper sandbox.
 * [x] **Sprint H — Edge-AI EW Threat Simulation Console:** 8-feature RF gauges, score dial, 60-packet moving timeline, and serial EW attack injector test bench (`BARRAGE`, `SPOT`, `PULSE`, `CLEAR`).
-* [ ] **Sprint F — MPU-6050 Ballistic Shock & Casualty Detection:** 6-axis accelerometer/gyroscope atonia detection for automated dead-man's zeroization (Planned).
+* [ ] **Sprint F — MPU-6050 Ballistic Shock & Casualty Detection:** 6-axis accelerometer/gyroscope atonia detection for automated dead-man's zeroization (ON HOLD — Deferred Future Update).
 
 ## 👥 Core Development Team
 
