@@ -1,5 +1,6 @@
 // =============================================================================
-// S.P.E.C.T.R.E. TCC — C2 Command & Control Panel (Right Panel)
+// S.P.E.C.T.R.E. TCC — Command & Control Panel (Right Panel)
+// Engineered for Precision Mission-Critical Node Operations
 // =============================================================================
 
 import React, { useMemo } from 'react';
@@ -33,94 +34,38 @@ interface Props {
   onOpenJamming?: () => void;
 }
 
-const styles: any = {
-  container: { display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' },
-  emptyState: {
-    flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px', padding: '32px',
-  },
-  emptyIcon: { fontSize: '48px', opacity: 0.15 },
-  emptyText: {
-    fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', color: '#4A4A4A', textAlign: 'center', letterSpacing: '0.5px', lineHeight: '1.6',
-  },
-  emptyHint: {
-    fontFamily: "'Orbitron', sans-serif", fontSize: '9px', color: '#3A3A3A', letterSpacing: '2px', textTransform: 'uppercase',
-  },
-  detailSection: { flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column', gap: '12px' },
-  card: { background: '#1A1A1A', borderRadius: '4px', border: '1px solid #2A2A2A', padding: '12px' },
-  cardHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' },
-  cardNodeId: {
-    fontFamily: "'Orbitron', sans-serif", fontSize: '16px', fontWeight: 700, letterSpacing: '2px', color: '#00FFFF',
-  },
-  deselectBtn: {
-    background: 'transparent', border: '1px solid #2A2A2A', color: '#6B6B6B', fontFamily: "'JetBrains Mono', monospace",
-    fontSize: '10px', padding: '2px 8px', borderRadius: '2px', cursor: 'pointer', transition: 'all 120ms ease',
-  },
-  detailGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' },
-  detailItem: { display: 'flex', flexDirection: 'column', gap: '2px' },
-  detailLabel: {
-    fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', fontWeight: 500, letterSpacing: '1.5px', textTransform: 'uppercase', color: '#4A4A4A',
-  },
-  detailValue: { fontFamily: "'JetBrains Mono', monospace", fontSize: '13px', fontWeight: 400, color: '#E0E0E0', fontVariantNumeric: 'tabular-nums' },
-  payloadCard: {
-    background: '#0D0D0D', borderRadius: '3px', border: '1px solid #1E1E1E', padding: '10px', fontFamily: "'JetBrains Mono', monospace",
-    fontSize: '10px', color: '#39FF14', lineHeight: '1.5', wordBreak: 'break-word',
-  },
-  payloadLabel: {
-    fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', fontWeight: 500, letterSpacing: '1.5px', textTransform: 'uppercase', color: '#4A4A4A', marginBottom: '6px',
-  },
-  sparklineContainer: { marginTop: '4px', height: '32px', background: '#0D0D0D', borderRadius: '3px', border: '1px solid #1E1E1E', padding: '4px', position: 'relative' },
-  commandSection: { display: 'flex', flexDirection: 'column', gap: '8px' },
-  commandBtn: {
-    width: '100%', height: '36px', background: '#1A1A1A', border: '1px solid #2A2A2A', borderRadius: '4px', color: '#A0A0A0',
-    fontFamily: "'JetBrains Mono', monospace", fontSize: '10px', fontWeight: 500, letterSpacing: '1.5px',
-    textTransform: 'uppercase', cursor: 'pointer', transition: 'all 150ms ease', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-  },
-  commandBtnPing: { borderColor: 'rgba(0, 255, 255, 0.2)', color: '#00FFFF' },
-  commandBtnRekey: { borderColor: 'rgba(57, 255, 20, 0.2)', color: '#39FF14' },
-  commandBtnDisabled: { opacity: 0.35, cursor: 'not-allowed' },
-  divider: { height: '1px', background: '#2A2A2A', margin: '4px 0' },
-  sectionLabel: {
-    fontFamily: "'Orbitron', sans-serif", fontSize: '9px', fontWeight: 600, letterSpacing: '2px', textTransform: 'uppercase', color: '#3A3A3A', marginBottom: '4px',
-  },
-  trustRow: { marginTop: '8px', display: 'flex', gap: '8px', alignItems: 'center' },
-  trustBadgePending: {
-    fontFamily: "'JetBrains Mono', monospace", fontSize: '10px', color: '#FFBF00', border: '1px solid rgba(255,191,0,0.4)', padding: '2px 6px', borderRadius: '3px',
-  },
-  trustBadgeTrusted: {
-    fontFamily: "'JetBrains Mono', monospace", fontSize: '10px', color: '#39FF14', border: '1px solid rgba(57,255,20,0.4)', padding: '2px 6px', borderRadius: '3px',
-  },
-  approveBtn: {
-    border: '1px solid rgba(57,255,20,0.4)', color: '#39FF14', background: '#111', borderRadius: '3px',
-    fontFamily: "'JetBrains Mono', monospace", fontSize: '10px', padding: '4px 8px', cursor: 'pointer',
-  },
-  approveAllBtn: {
-    border: '1px solid rgba(57,255,20,0.5)', color: '#39FF14', background: 'rgba(57,255,20,0.1)', borderRadius: '3px',
-    fontFamily: "'JetBrains Mono', monospace", fontSize: '10px', padding: '4px 8px', cursor: 'pointer',
-    transition: 'all 120ms ease',
-  },
-};
-
-function Sparkline({ data, color = '#00FFFF' }: { data: number[]; color?: string }) {
+// Sparkline component with SVG gradient
+function Sparkline({ data, color = '#00E5FF' }: { data: number[]; color?: string }) {
   if (!data || data.length < 2) return null;
 
-  const width = 200;
-  const height = 24;
+  const width = 240;
+  const height = 28;
   const min = Math.min(...data);
   const max = Math.max(...data);
   const range = max - min || 1;
 
   const points = data.map((val, i) => {
     const x = (i / (data.length - 1)) * width;
-    const y = height - ((val - min) / range) * height;
-    return `${x},${y}`;
+    const y = height - ((val - min) / range) * (height - 6) - 3;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
   });
 
   return (
-    <div style={styles.sparklineContainer}>
+    <div
+      style={{
+        marginTop: '6px',
+        height: '32px',
+        background: 'rgba(5, 8, 12, 0.7)',
+        borderRadius: '3px',
+        border: '1px solid rgba(255, 255, 255, 0.06)',
+        padding: '2px',
+        position: 'relative',
+      }}
+    >
       <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: '100%' }} preserveAspectRatio="none">
         <defs>
           <linearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity="0.2" />
+            <stop offset="0%" stopColor={color} stopOpacity="0.25" />
             <stop offset="100%" stopColor={color} stopOpacity="0" />
           </linearGradient>
         </defs>
@@ -141,107 +86,377 @@ export default function C2Panel({
   onOpenJamming,
 }: Props) {
   const statusColor = useMemo(() => {
-    if (!selectedNode) return '#6B6B6B';
+    if (!selectedNode) return '#5D6677';
     switch (selectedNode.status) {
-      case 'ACTIVE': return '#00FFFF';
-      case 'COMPROMISED': return '#FF0000';
-      case 'ZEROIZED': return '#6B6B6B';
-      default: return '#FFBF00';
+      case 'ACTIVE': return '#00E5FF';
+      case 'COMPROMISED': return '#FF3344';
+      case 'ZEROIZED': return '#5D6677';
+      default: return '#FFB300';
     }
   }, [selectedNode?.status]);
 
   const commandEnabled = !!selectedNode && selectedNode.trustState === 'trusted' && selectedNode.status !== 'ZEROIZED';
+  const distanceMeters = selectedNode ? Math.round(Math.hypot(selectedNode.posX, selectedNode.posY)) : 0;
 
   return (
-    <div style={styles.container}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      {/* Header */}
       <div className="panel-header">
-        <span className="panel-header__title">Command & Control</span>
-        {selectedNode && <span className="panel-header__badge panel-header__badge--active">LOCKED</span>}
+        <span className="panel-header__title">
+          <span>◈</span> Command & Control
+        </span>
+        {selectedNode ? (
+          <span className="panel-header__badge panel-header__badge--active">TARGET LOCKED</span>
+        ) : (
+          <span className="panel-header__badge" style={{ background: 'rgba(255,255,255,0.04)', color: '#5D6677', border: '1px solid rgba(255,255,255,0.08)' }}>
+            STANDBY
+          </span>
+        )}
       </div>
 
       {!selectedNode ? (
-        <div style={styles.emptyState}>
-          <div style={styles.emptyIcon}>⊕</div>
-          <div style={styles.emptyText}>Select a node from the radar map or telemetry table to access C2 controls.</div>
-          <div style={styles.emptyHint}>No Target Selected</div>
-        </div>
-      ) : (
-        <div style={styles.detailSection}>
-          <div style={styles.card}>
-            <div style={styles.cardHeader}>
-              <span style={{ ...styles.cardNodeId, color: statusColor }}>{selectedNode.nodeId}</span>
-              <button style={styles.deselectBtn} onClick={onDeselectNode}>✕ RELEASE</button>
-            </div>
-
-            <div style={styles.detailGrid}>
-              <div style={styles.detailItem}><span style={styles.detailLabel}>Status</span><span style={{ ...styles.detailValue, color: statusColor }}>{selectedNode.status}</span></div>
-              <div style={styles.detailItem}><span style={styles.detailLabel}>Hop Count</span><span style={styles.detailValue}>{selectedNode.hopCount}</span></div>
-              <div style={styles.detailItem}><span style={styles.detailLabel}>Position</span><span style={styles.detailValue}>({selectedNode.posX}, {selectedNode.posY})</span></div>
-              <div style={styles.detailItem}><span style={styles.detailLabel}>RSSI / SNR</span><span style={styles.detailValue}>{selectedNode.rssi} dBm / {selectedNode.snr}</span></div>
-              <div style={styles.detailItem}><span style={styles.detailLabel}>Anomaly Score</span><span style={{ ...styles.detailValue, color: selectedNode.anomalyScore > 0.7 ? '#FFBF00' : selectedNode.anomalyScore > 0.4 ? '#A0A0A0' : '#39FF14' }}>{selectedNode.anomalyScore}</span></div>
-              <div style={styles.detailItem}><span style={styles.detailLabel}>Msg ID</span><span style={styles.detailValue}>#{selectedNode.msgId}</span></div>
-            </div>
-
-            <div style={styles.trustRow}>
-              <span style={selectedNode.trustState === 'trusted' ? styles.trustBadgeTrusted : styles.trustBadgePending}>
-                {selectedNode.trustState === 'trusted' ? 'TRUSTED' : 'PENDING APPROVAL'}
-              </span>
-              {selectedNode.trustState !== 'trusted' && (
-                <button style={styles.approveBtn} onClick={() => onApproveNode(selectedNode.nodeId)}>
-                  APPROVE COMMAND ACCESS
-                </button>
-              )}
-              {onApproveAll && (
-                <button style={styles.approveAllBtn} onClick={onApproveAll} title="Approve trust for all pending nodes">
-                  APPROVE ALL
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div style={styles.card}>
-            <span style={styles.sectionLabel}>Signal History</span>
-            <Sparkline data={selectedNode.history} color="#00FFFF" />
+        /* Elevated Understated Empty State */
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '24px 20px',
+            gap: '14px',
+            textAlign: 'center',
+          }}
+        >
+          {/* Tactical Targeting Crosshair Graphic */}
+          <div
+            style={{
+              width: '56px',
+              height: '56px',
+              borderRadius: '50%',
+              border: '1px dashed rgba(0, 229, 255, 0.25)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'rgba(0, 229, 255, 0.4)',
+              fontSize: '20px',
+              position: 'relative',
+            }}
+          >
+            ⊕
+            <div style={{ position: 'absolute', width: '8px', height: '8px', borderTop: '2px solid #00E5FF', borderLeft: '2px solid #00E5FF', top: '-1px', left: '-1px' }} />
+            <div style={{ position: 'absolute', width: '8px', height: '8px', borderTop: '2px solid #00E5FF', borderRight: '2px solid #00E5FF', top: '-1px', right: '-1px' }} />
+            <div style={{ position: 'absolute', width: '8px', height: '8px', borderBottom: '2px solid #00E5FF', borderLeft: '2px solid #00E5FF', bottom: '-1px', left: '-1px' }} />
+            <div style={{ position: 'absolute', width: '8px', height: '8px', borderBottom: '2px solid #00E5FF', borderRight: '2px solid #00E5FF', bottom: '-1px', right: '-1px' }} />
           </div>
 
           <div>
-            <span style={styles.payloadLabel}>Last Payload</span>
-            <div style={{ ...styles.payloadCard, color: selectedNode.status === 'COMPROMISED' ? '#FF0000' : '#39FF14' }}>
-              &gt; {selectedNode.payload}
+            <div
+              style={{
+                fontFamily: "'Orbitron', sans-serif",
+                fontSize: '11px',
+                fontWeight: 700,
+                color: '#9DA7B3',
+                letterSpacing: '1.5px',
+                marginBottom: '6px',
+              }}
+            >
+              STANDBY FOR TARGET ACQUISITION
+            </div>
+            <div
+              style={{
+                fontFamily: "'Segoe UI', sans-serif",
+                fontSize: '11px',
+                color: '#5D6677',
+                lineHeight: '1.5',
+                maxWidth: '240px',
+              }}
+            >
+              Select any contact from the tactical radar or telemetry roster to engage command operations.
             </div>
           </div>
 
-          <div style={styles.commandSection}>
-            <span style={styles.sectionLabel}>Tactical Commands</span>
+          {/* System Readiness Checklist */}
+          <div
+            style={{
+              width: '100%',
+              background: 'rgba(11, 15, 23, 0.6)',
+              borderRadius: '5px',
+              border: '1px solid rgba(255, 255, 255, 0.05)',
+              padding: '10px 12px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+              textAlign: 'left',
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: '9.5px',
+            }}
+          >
+            <div style={{ color: '#39FF14', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>●</span> C2 Command Bus: Armed & Ready
+            </div>
+            <div style={{ color: '#00E5FF', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>●</span> Crypto Engine: AES-256-GCM
+            </div>
+            <div style={{ color: '#A78BFA', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>●</span> Edge-AI EW Monitor: Active
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* Selected Node Detail & Action Roster */
+        <div style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {/* Node Identity Card */}
+          <div
+            style={{
+              background: 'rgba(15, 20, 29, 0.85)',
+              borderRadius: '5px',
+              border: '1px solid rgba(0, 229, 255, 0.2)',
+              padding: '12px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+              <div>
+                <span style={{ fontFamily: "'Orbitron', sans-serif", fontSize: '16px', fontWeight: 700, letterSpacing: '1.5px', color: statusColor }}>
+                  {selectedNode.nodeId}
+                </span>
+                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', color: '#5D6677', marginTop: '2px' }}>
+                  TARGET ID #{selectedNode.msgId}
+                </div>
+              </div>
+              <button
+                onClick={onDeselectNode}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  color: '#9DA7B3',
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: '9px',
+                  padding: '3px 8px',
+                  borderRadius: '3px',
+                  cursor: 'pointer',
+                  transition: 'all 120ms ease',
+                }}
+              >
+                ✕ RELEASE
+              </button>
+            </div>
+
+            {/* Structured Telemetry Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
+              <div>
+                <div style={{ fontFamily: "'Segoe UI', sans-serif", fontSize: '9px', textTransform: 'uppercase', color: '#5D6677', fontWeight: 600 }}>Status</div>
+                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', fontWeight: 600, color: statusColor }}>{selectedNode.status}</div>
+              </div>
+              <div>
+                <div style={{ fontFamily: "'Segoe UI', sans-serif", fontSize: '9px', textTransform: 'uppercase', color: '#5D6677', fontWeight: 600 }}>Distance</div>
+                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', color: '#EDEDED' }}>{distanceMeters}m</div>
+              </div>
+              <div>
+                <div style={{ fontFamily: "'Segoe UI', sans-serif", fontSize: '9px', textTransform: 'uppercase', color: '#5D6677', fontWeight: 600 }}>Position</div>
+                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', color: '#EDEDED' }}>({selectedNode.posX}, {selectedNode.posY})</div>
+              </div>
+              <div>
+                <div style={{ fontFamily: "'Segoe UI', sans-serif", fontSize: '9px', textTransform: 'uppercase', color: '#5D6677', fontWeight: 600 }}>Hop Count</div>
+                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', color: '#EDEDED' }}>{selectedNode.hopCount} Hops</div>
+              </div>
+              <div>
+                <div style={{ fontFamily: "'Segoe UI', sans-serif", fontSize: '9px', textTransform: 'uppercase', color: '#5D6677', fontWeight: 600 }}>RSSI / SNR</div>
+                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', color: selectedNode.rssi > -80 ? '#39FF14' : '#FFB300' }}>
+                  {selectedNode.rssi} dBm / {selectedNode.snr}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontFamily: "'Segoe UI', sans-serif", fontSize: '9px', textTransform: 'uppercase', color: '#5D6677', fontWeight: 600 }}>Anomaly Index</div>
+                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', fontWeight: 700, color: selectedNode.anomalyScore > 0.7 ? '#FF3344' : selectedNode.anomalyScore > 0.4 ? '#FFB300' : '#39FF14' }}>
+                  {selectedNode.anomalyScore.toFixed(3)}
+                </div>
+              </div>
+            </div>
+
+            {/* Trust State Row & Command Authorization */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              <span
+                style={{
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: '9.5px',
+                  fontWeight: 600,
+                  padding: '2px 8px',
+                  borderRadius: '3px',
+                  color: selectedNode.trustState === 'trusted' ? '#39FF14' : '#FFB300',
+                  background: selectedNode.trustState === 'trusted' ? 'rgba(57, 255, 20, 0.08)' : 'rgba(255, 179, 0, 0.08)',
+                  border: `1px solid ${selectedNode.trustState === 'trusted' ? 'rgba(57,255,20,0.3)' : 'rgba(255,179,0,0.3)'}`,
+                }}
+              >
+                {selectedNode.trustState === 'trusted' ? 'TRUSTED COMMAND CHANNEL' : 'PENDING APPROVAL'}
+              </span>
+
+              {selectedNode.trustState !== 'trusted' && (
+                <button
+                  onClick={() => onApproveNode(selectedNode.nodeId)}
+                  style={{
+                    background: 'rgba(57, 255, 20, 0.12)',
+                    border: '1px solid rgba(57, 255, 20, 0.5)',
+                    color: '#39FF14',
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontSize: '9.5px',
+                    fontWeight: 700,
+                    padding: '3px 8px',
+                    borderRadius: '3px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  ✓ APPROVE
+                </button>
+              )}
+
+              {onApproveAll && (
+                <button
+                  onClick={onApproveAll}
+                  style={{
+                    background: 'transparent',
+                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    color: '#9DA7B3',
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontSize: '9px',
+                    padding: '3px 6px',
+                    borderRadius: '3px',
+                    cursor: 'pointer',
+                  }}
+                  title="Approve trust for all pending nodes"
+                >
+                  ALL
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Signal History Card */}
+          <div
+            style={{
+              background: 'rgba(15, 20, 29, 0.75)',
+              borderRadius: '5px',
+              border: '1px solid rgba(255, 255, 255, 0.06)',
+              padding: '10px',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontFamily: "'Segoe UI', sans-serif", fontSize: '9px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: '#5D6677' }}>
+                Signal History (RSSI dBm)
+              </span>
+              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', color: '#00E5FF' }}>
+                {selectedNode.history.length > 0 ? `${selectedNode.history[selectedNode.history.length - 1]} dBm` : '—'}
+              </span>
+            </div>
+            <Sparkline data={selectedNode.history} color="#00E5FF" />
+          </div>
+
+          {/* Decrypted Payload Card */}
+          <div>
+            <div style={{ fontFamily: "'Segoe UI', sans-serif", fontSize: '9px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: '#5D6677', marginBottom: '4px' }}>
+              Decrypted Payload Stream
+            </div>
+            <div
+              style={{
+                background: '#040609',
+                borderRadius: '4px',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                padding: '8px 10px',
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: '10.5px',
+                color: selectedNode.status === 'COMPROMISED' ? '#FF3344' : '#39FF14',
+                lineHeight: '1.5',
+                wordBreak: 'break-word',
+              }}
+            >
+              &gt; {selectedNode.payload || '(no recent payload)'}
+            </div>
+          </div>
+
+          {/* Tactical Command Actions */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <div style={{ fontFamily: "'Segoe UI', sans-serif", fontSize: '9px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: '#5D6677' }}>
+              Tactical Operational Commands
+            </div>
             <button
-              style={{ ...styles.commandBtn, ...styles.commandBtnPing, ...(commandEnabled ? {} : styles.commandBtnDisabled) }}
               disabled={!commandEnabled}
               onClick={() => onSendCommand({ type: 'PING', nodeId: selectedNode.nodeId })}
+              style={{
+                height: '34px',
+                background: commandEnabled ? 'rgba(0, 229, 255, 0.08)' : 'rgba(255,255,255,0.02)',
+                border: `1px solid ${commandEnabled ? 'rgba(0, 229, 255, 0.35)' : 'rgba(255,255,255,0.05)'}`,
+                color: commandEnabled ? '#00E5FF' : '#3E4654',
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: '10px',
+                fontWeight: 700,
+                letterSpacing: '1px',
+                borderRadius: '4px',
+                cursor: commandEnabled ? 'pointer' : 'not-allowed',
+                transition: 'all 120ms ease',
+              }}
+              title={commandEnabled ? 'Send low-latency echo ping' : 'Requires approved command trust'}
             >
               ◉ PING NODE
             </button>
+
             <button
-              style={{ ...styles.commandBtn, ...styles.commandBtnRekey, ...(commandEnabled ? {} : styles.commandBtnDisabled) }}
               disabled={!commandEnabled}
               onClick={() => onSendCommand({ type: 'REKEY', nodeId: selectedNode.nodeId })}
+              style={{
+                height: '34px',
+                background: commandEnabled ? 'rgba(57, 255, 20, 0.08)' : 'rgba(255,255,255,0.02)',
+                border: `1px solid ${commandEnabled ? 'rgba(57, 255, 20, 0.35)' : 'rgba(255,255,255,0.05)'}`,
+                color: commandEnabled ? '#39FF14' : '#3E4654',
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: '10px',
+                fontWeight: 700,
+                letterSpacing: '1px',
+                borderRadius: '4px',
+                cursor: commandEnabled ? 'pointer' : 'not-allowed',
+                transition: 'all 120ms ease',
+              }}
+              title={commandEnabled ? 'Trigger over-the-air ECDH ephemeral re-keying' : 'Requires approved command trust'}
             >
               ◈ ECDH RE-KEY
             </button>
           </div>
 
-          <div style={styles.commandSection}>
-            <span style={styles.sectionLabel}>Deep Telemetry Inspectors</span>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+          {/* Deep Inspectors Launchers */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <div style={{ fontFamily: "'Segoe UI', sans-serif", fontSize: '9px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: '#5D6677' }}>
+              Deep Diagnostics
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
               <button
-                style={{ ...styles.commandBtn, borderColor: 'rgba(0, 255, 255, 0.4)', color: '#00FFFF', fontSize: '9px', height: '32px' }}
                 onClick={onOpenCrypto}
+                style={{
+                  height: '32px',
+                  background: 'rgba(0, 229, 255, 0.06)',
+                  border: '1px solid rgba(0, 229, 255, 0.3)',
+                  color: '#00E5FF',
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: '9px',
+                  fontWeight: 600,
+                  borderRadius: '3px',
+                  cursor: 'pointer',
+                }}
                 title="Inspect live AES-256-GCM pipeline & 1-bit tamper test bench"
               >
                 🔐 CRYPTO PIPELINE
               </button>
               <button
-                style={{ ...styles.commandBtn, borderColor: 'rgba(167, 139, 250, 0.4)', color: '#A78BFA', fontSize: '9px', height: '32px' }}
                 onClick={onOpenJamming}
+                style={{
+                  height: '32px',
+                  background: 'rgba(167, 139, 250, 0.06)',
+                  border: '1px solid rgba(167, 139, 250, 0.3)',
+                  color: '#A78BFA',
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: '9px',
+                  fontWeight: 600,
+                  borderRadius: '3px',
+                  cursor: 'pointer',
+                }}
                 title="Inspect Edge-AI 8-feature gauges & EW attack injection console"
               >
                 📡 EW / ML CONSOLE
@@ -249,8 +464,9 @@ export default function C2Panel({
             </div>
           </div>
 
-          <div style={styles.divider} />
+          <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.06)', margin: '4px 0' }} />
 
+          {/* Hardware Armed Zeroize Switch */}
           <ZeroizeSwitch
             nodeId={selectedNode.nodeId}
             onExecute={onSendCommand}

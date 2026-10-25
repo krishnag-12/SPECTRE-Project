@@ -1,6 +1,6 @@
 // =============================================================================
 // S.P.E.C.T.R.E. TCC — Node Telemetry Panel (Left Panel)
-// Scrollable tactical data table with EW threat detection
+// Real-Time Field Node Roster & Live Tactical Event Stream
 // =============================================================================
 
 import React, { useState } from 'react';
@@ -25,221 +25,6 @@ interface EventEntry {
   message: string;
 }
 
-const styles: any = {
-  container: {
-    display: 'flex',
-    flexDirection: 'column',
-    height: '100%',
-    overflow: 'hidden',
-  },
-  tableSection: {
-    flex: 1,
-    overflowY: 'auto',
-    overflowX: 'auto',
-    WebkitOverflowScrolling: 'touch',
-  },
-  table: {
-    width: '100%',
-    minWidth: '440px',
-    borderCollapse: 'collapse',
-    fontFamily: "'JetBrains Mono', monospace",
-    fontSize: '10px',
-  },
-  thead: {
-    position: 'sticky',
-    top: 0,
-    zIndex: 2,
-  },
-  th: {
-    padding: '6px 8px',
-    textAlign: 'left',
-    fontWeight: 600,
-    fontSize: '9px',
-    letterSpacing: '1.5px',
-    textTransform: 'uppercase',
-    color: '#6B6B6B',
-    background: '#151515',
-    borderBottom: '1px solid #2A2A2A',
-    whiteSpace: 'nowrap',
-  },
-  tr: {
-    cursor: 'pointer',
-    transition: 'background 120ms ease',
-    borderBottom: '1px solid #1E1E1E',
-  },
-  trHover: {
-    background: '#1E1E1E',
-  },
-  trSelected: {
-    background: 'rgba(0, 255, 255, 0.06)',
-    borderLeft: '2px solid #00FFFF',
-  },
-  trAnomaly: {
-    animation: 'flashAmber 1.2s ease infinite',
-  },
-  trCompromised: {
-    animation: 'flashCritical 0.8s ease infinite',
-  },
-  td: {
-    padding: '6px 8px',
-    whiteSpace: 'nowrap',
-    verticalAlign: 'middle',
-  },
-  nodeId: {
-    fontWeight: 600,
-    letterSpacing: '0.5px',
-  },
-  statusBadge: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '4px',
-    fontSize: '9px',
-    fontWeight: 500,
-    padding: '1px 6px',
-    borderRadius: '2px',
-    letterSpacing: '0.8px',
-    textTransform: 'uppercase',
-  },
-  statusActive: {
-    color: '#00FFFF',
-    background: 'rgba(0, 255, 255, 0.08)',
-    border: '1px solid rgba(0, 255, 255, 0.2)',
-  },
-  statusCompromised: {
-    color: '#FF0000',
-    background: 'rgba(255, 0, 0, 0.08)',
-    border: '1px solid rgba(255, 0, 0, 0.3)',
-  },
-  statusZeroized: {
-    color: '#6B6B6B',
-    background: 'rgba(100, 100, 100, 0.08)',
-    border: '1px solid rgba(100, 100, 100, 0.2)',
-    textDecoration: 'line-through',
-  },
-  statusLost: {
-    color: '#FFBF00',
-    background: 'rgba(255, 191, 0, 0.08)',
-    border: '1px solid rgba(255, 191, 0, 0.2)',
-  },
-  ewBadge: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '3px',
-    fontSize: '9px',
-    fontWeight: 600,
-    padding: '1px 6px',
-    borderRadius: '2px',
-    letterSpacing: '0.5px',
-    color: '#FFBF00',
-    background: 'rgba(255, 191, 0, 0.1)',
-    border: '1px solid rgba(255, 191, 0, 0.3)',
-    animation: 'pulse 1s ease infinite',
-  },
-  ewClear: {
-    color: '#4B5320',
-    fontSize: '9px',
-  },
-  killBtn: {
-    background: 'transparent',
-    border: '1px solid rgba(255, 0, 0, 0.3)',
-    borderRadius: '2px',
-    color: '#FF0000',
-    fontFamily: "'JetBrains Mono', monospace",
-    fontSize: '8px',
-    fontWeight: 700,
-    letterSpacing: '1px',
-    textTransform: 'uppercase',
-    padding: '2px 6px',
-    cursor: 'pointer',
-    transition: 'all 150ms ease',
-    whiteSpace: 'nowrap',
-  },
-  killBtnConfirm: {
-    background: 'rgba(255, 0, 0, 0.15)',
-    border: '1px solid #FF0000',
-    color: '#FF3333',
-    animation: 'pulse 0.8s ease infinite',
-  },
-  killBtnDisabled: {
-    opacity: 0.2,
-    cursor: 'not-allowed',
-    border: '1px solid #3A3A3A',
-    color: '#3A3A3A',
-  },
-  approveAllBtn: {
-    background: 'rgba(57, 255, 20, 0.1)',
-    border: '1px solid rgba(57, 255, 20, 0.5)',
-    color: '#39FF14',
-    fontFamily: "'JetBrains Mono', monospace",
-    fontSize: '9px',
-    fontWeight: 600,
-    letterSpacing: '0.8px',
-    padding: '2px 6px',
-    borderRadius: '2px',
-    cursor: 'pointer',
-    transition: 'all 120ms ease',
-  },
-  // ---- Event Log Section ----
-  logSection: {
-    borderTop: '1px solid #2A2A2A',
-    maxHeight: '200px',
-    overflowY: 'auto',
-    background: '#0D0D0D',
-  },
-  logHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '4px 8px',
-    background: '#111111',
-    borderBottom: '1px solid #1E1E1E',
-    cursor: 'pointer',
-  },
-  logHeaderTitle: {
-    fontFamily: "'Orbitron', sans-serif",
-    fontSize: '9px',
-    fontWeight: 600,
-    letterSpacing: '2px',
-    color: '#6B6B6B',
-    textTransform: 'uppercase',
-  },
-  logEntry: {
-    display: 'flex',
-    gap: '8px',
-    padding: '3px 8px',
-    fontSize: '10px',
-    borderBottom: '1px solid #141414',
-    fontFamily: "'JetBrains Mono', monospace",
-    animation: 'fadeIn 300ms ease',
-  },
-  logTime: {
-    color: '#4A4A4A',
-    flexShrink: 0,
-    fontSize: '9px',
-    minWidth: '65px',
-  },
-  logMsg: {
-    wordBreak: 'break-word',
-  },
-  logNormal: { color: '#39FF14' },
-  logWarning: { color: '#FFBF00' },
-  logCritical: { color: '#FF0000' },
-};
-
-function getTimeSince(lastSeen) {
-  if (!lastSeen) return null;
-  const seconds = Math.floor((Date.now() - lastSeen) / 1000);
-  if (seconds > 45) return 'LOST';
-  return null;
-}
-
-function getJammingLevel(anomalyScore, rssi) {
-  if (anomalyScore > 0.85) return { level: 'HIGH', color: '#FF0000' };
-  if (anomalyScore > 0.7) return { level: 'MEDIUM', color: '#FFBF00' };
-  if (anomalyScore > 0.4) return { level: 'LOW', color: '#4B5320' };
-  return { level: 'CLEAR', color: '#4B5320' };
-}
-
 interface Props {
   nodes: NodeRow[];
   selectedNodeId: string | null;
@@ -249,149 +34,190 @@ interface Props {
   eventLog: EventEntry[];
 }
 
-export default function NodeTelemetryPanel({ nodes, selectedNodeId, onSelectNode, onSendCommand, onApproveAll, eventLog }: Props) {
-  const [hoveredRow, setHoveredRow] = useState(null);
+function getTimeSince(lastSeen: number) {
+  if (!lastSeen) return null;
+  const seconds = Math.floor((Date.now() - lastSeen) / 1000);
+  if (seconds > 45) return 'LOST';
+  return null;
+}
+
+function getJammingLevel(anomalyScore: number) {
+  if (anomalyScore > 0.85) return { level: 'BARRAGE', color: '#FF3344' };
+  if (anomalyScore > 0.70) return { level: 'SPOT/PULSE', color: '#FF9100' };
+  if (anomalyScore > 0.60) return { level: 'ANOMALY', color: '#FFB300' };
+  return { level: 'CLEAR', color: '#39FF14' };
+}
+
+export default function NodeTelemetryPanel({
+  nodes,
+  selectedNodeId,
+  onSelectNode,
+  onSendCommand,
+  onApproveAll,
+  eventLog,
+}: Props) {
+  const [hoveredRow, setHoveredRow] = useState<string | null>(null);
   const [logExpanded, setLogExpanded] = useState(true);
   const [confirmKill, setConfirmKill] = useState<string | null>(null);
 
   const hasPending = nodes.some((n) => n.trustState !== 'trusted');
 
   return (
-    <div style={styles.container}>
-      {/* Panel Header */}
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      {/* Header */}
       <div className="panel-header">
-        <span className="panel-header__title">Node Telemetry</span>
+        <span className="panel-header__title">
+          <span>⊞</span> Node Telemetry Roster
+        </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           {hasPending && onApproveAll && (
             <button
-              style={styles.approveAllBtn}
               onClick={onApproveAll}
-              title="Approve trust for all pending nodes"
+              style={{
+                background: 'rgba(57, 255, 20, 0.12)',
+                border: '1px solid rgba(57, 255, 20, 0.45)',
+                color: '#39FF14',
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: '9px',
+                fontWeight: 700,
+                letterSpacing: '0.8px',
+                padding: '2px 7px',
+                borderRadius: '3px',
+                cursor: 'pointer',
+              }}
+              title="Approve command trust for all pending nodes"
             >
               ✓ APPROVE ALL
             </button>
           )}
-          <span className={`panel-header__badge panel-header__badge--active`}>
-            {nodes.length} NODES
+          <span className="panel-header__badge panel-header__badge--active">
+            {nodes.length} CONTACTS
           </span>
         </div>
       </div>
 
-      {/* Data Table */}
-      <div style={styles.tableSection}>
-        <table style={styles.table}>
-          <thead style={styles.thead}>
-            <tr>
-              <th style={styles.th}>Node ID</th>
-              <th style={styles.th}>Status</th>
-              <th style={styles.th}>Pos (X,Y)</th>
-              <th style={styles.th}>RSSI</th>
-              <th style={styles.th}>EW Threat</th>
-              <th style={styles.th}>Trust</th>
-              <th style={{...styles.th, textAlign: 'center'}}>ACT</th>
+      {/* Main Table View */}
+      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
+        <table style={{ width: '100%', minWidth: '430px', borderCollapse: 'collapse', fontFamily: "'JetBrains Mono', monospace", fontSize: '10px' }}>
+          <thead>
+            <tr style={{ position: 'sticky', top: 0, zIndex: 2, background: 'rgba(14, 18, 26, 0.96)', borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
+              <th style={thStyle}>Node ID</th>
+              <th style={thStyle}>Status</th>
+              <th style={thStyle}>Pos (X,Y)</th>
+              <th style={thStyle}>RSSI</th>
+              <th style={thStyle}>EW Threat</th>
+              <th style={thStyle}>Trust</th>
+              <th style={{ ...thStyle, textAlign: 'center' }}>Action</th>
             </tr>
           </thead>
           <tbody>
             {nodes.map((node) => {
               const isSelected = node.nodeId === selectedNodeId;
-              const isAnomaly = node.anomalyScore > 0.7;
               const isCompromised = node.status === 'COMPROMISED';
               const isZeroized = node.status === 'ZEROIZED';
+              const isAnomaly = node.anomalyScore > 0.6;
               const contactLost = getTimeSince(node.lastSeen) === 'LOST';
-              const jamming = getJammingLevel(node.anomalyScore, node.rssi);
+              const jamming = getJammingLevel(node.anomalyScore);
 
-              let rowStyle = { ...styles.tr };
-              if (isSelected) rowStyle = { ...rowStyle, ...styles.trSelected };
-              if (hoveredRow === node.nodeId && !isSelected) rowStyle = { ...rowStyle, ...styles.trHover };
-
-              // Determine CSS animation class
-              let rowClassName = '';
-              if (isCompromised) rowClassName = 'row-compromised';
-              else if (isAnomaly) rowClassName = 'row-anomaly';
+              let rowBg = 'transparent';
+              if (isSelected) rowBg = 'rgba(0, 229, 255, 0.08)';
+              else if (hoveredRow === node.nodeId) rowBg = 'rgba(255, 255, 255, 0.03)';
+              else if (isCompromised) rowBg = 'rgba(255, 51, 68, 0.08)';
+              else if (isAnomaly) rowBg = 'rgba(255, 179, 0, 0.05)';
 
               return (
                 <tr
                   key={node.nodeId}
-                  style={rowStyle}
-                  className={rowClassName}
                   onClick={() => onSelectNode(node.nodeId)}
                   onMouseEnter={() => setHoveredRow(node.nodeId)}
                   onMouseLeave={() => setHoveredRow(null)}
+                  style={{
+                    cursor: 'pointer',
+                    background: rowBg,
+                    borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
+                    borderLeft: isSelected ? '3px solid #00E5FF' : '3px solid transparent',
+                    transition: 'background 120ms ease',
+                  }}
                 >
-                  <td style={styles.td}>
-                    <span style={{
-                      ...styles.nodeId,
-                      color: isZeroized ? '#6B6B6B'
-                        : isCompromised ? '#FF0000'
-                        : '#00FFFF',
-                    }}>
+                  {/* Node ID */}
+                  <td style={tdStyle}>
+                    <span style={{ fontWeight: 700, color: isZeroized ? '#5D6677' : isCompromised ? '#FF3344' : '#00E5FF' }}>
                       {node.nodeId}
                     </span>
                   </td>
-                  <td style={styles.td}>
+
+                  {/* Status */}
+                  <td style={tdStyle}>
                     {contactLost ? (
-                      <span style={{ ...styles.statusBadge, ...styles.statusLost }}>
+                      <span style={{ ...statusBadgeStyle, color: '#FFB300', background: 'rgba(255,179,0,0.1)', border: '1px solid rgba(255,179,0,0.3)' }}>
                         ⊘ LOST
                       </span>
                     ) : isZeroized ? (
-                      <span style={{ ...styles.statusBadge, ...styles.statusZeroized }}>
+                      <span style={{ ...statusBadgeStyle, color: '#5D6677', background: 'rgba(93,102,119,0.1)', border: '1px solid rgba(93,102,119,0.3)', textDecoration: 'line-through' }}>
                         ✕ ZEROIZED
                       </span>
                     ) : isCompromised ? (
-                      <span style={{ ...styles.statusBadge, ...styles.statusCompromised }}>
+                      <span style={{ ...statusBadgeStyle, color: '#FF3344', background: 'rgba(255,51,68,0.12)', border: '1px solid rgba(255,51,68,0.35)' }}>
                         ◉ COMPROMISED
                       </span>
                     ) : (
-                      <span style={{ ...styles.statusBadge, ...styles.statusActive }}>
+                      <span style={{ ...statusBadgeStyle, color: '#00E5FF', background: 'rgba(0,229,255,0.1)', border: '1px solid rgba(0,229,255,0.3)' }}>
                         ● ACTIVE
                       </span>
                     )}
                   </td>
-                  <td style={{ ...styles.td, color: '#A0A0A0', fontVariantNumeric: 'tabular-nums' }}>
+
+                  {/* Coordinates */}
+                  <td style={{ ...tdStyle, color: '#9DA7B3', fontVariantNumeric: 'tabular-nums' }}>
                     ({node.posX}, {node.posY})
                   </td>
-                  <td style={{
-                    ...styles.td,
-                    color: node.rssi > -70 ? '#39FF14'
-                      : node.rssi > -85 ? '#FFBF00'
-                      : '#FF0000',
-                    fontVariantNumeric: 'tabular-nums',
-                  }}>
+
+                  {/* RSSI */}
+                  <td style={{ ...tdStyle, color: node.rssi > -75 ? '#39FF14' : node.rssi > -90 ? '#FFB300' : '#FF3344', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
                     {node.rssi} dBm
                   </td>
-                  <td style={styles.td}>
+
+                  {/* EW Threat */}
+                  <td style={tdStyle}>
                     {jamming.level === 'CLEAR' ? (
-                      <span style={styles.ewClear}>CLEAR</span>
+                      <span style={{ color: 'rgba(57, 255, 20, 0.7)', fontSize: '9px' }}>NOMINAL</span>
                     ) : (
-                      <span style={styles.ewBadge}>
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                          fontSize: '8.5px',
+                          fontWeight: 700,
+                          padding: '1px 5px',
+                          borderRadius: '2px',
+                          color: jamming.color,
+                          background: `${jamming.color}15`,
+                          border: `1px solid ${jamming.color}40`,
+                        }}
+                      >
                         ⚠ {jamming.level}
                       </span>
                     )}
                   </td>
-                  <td style={styles.td}>
-                    <span style={{
-                      color: node.trustState === 'trusted' ? '#39FF14' : '#FFBF00',
-                      fontSize: '9px',
-                      letterSpacing: '0.8px',
-                    }}>
+
+                  {/* Trust */}
+                  <td style={tdStyle}>
+                    <span style={{ color: node.trustState === 'trusted' ? '#39FF14' : '#FFB300', fontSize: '9px', fontWeight: 600 }}>
                       {node.trustState === 'trusted' ? 'TRUSTED' : 'PENDING'}
                     </span>
                   </td>
-                  <td style={{...styles.td, textAlign: 'center'}}>
+
+                  {/* Action / Zeroize */}
+                  <td style={{ ...tdStyle, textAlign: 'center' }}>
                     {(() => {
                       const isKillDisabled = isZeroized || isCompromised || contactLost;
                       const isConfirming = confirmKill === node.nodeId;
                       if (isKillDisabled) {
-                        return (
-                          <span style={{...styles.killBtn, ...styles.killBtnDisabled}}>KILL</span>
-                        );
+                        return <span style={{ color: '#3E4654', fontSize: '8.5px' }}>—</span>;
                       }
                       return (
                         <button
-                          style={{
-                            ...styles.killBtn,
-                            ...(isConfirming ? styles.killBtnConfirm : {}),
-                          }}
                           onClick={(e) => {
                             e.stopPropagation();
                             if (isConfirming) {
@@ -399,13 +225,23 @@ export default function NodeTelemetryPanel({ nodes, selectedNodeId, onSelectNode
                               setConfirmKill(null);
                             } else {
                               setConfirmKill(node.nodeId);
-                              // Auto-cancel confirmation after 3 seconds
                               setTimeout(() => setConfirmKill((prev) => prev === node.nodeId ? null : prev), 3000);
                             }
                           }}
-                          title={isConfirming ? 'Click again to confirm zeroization' : 'Zeroize this node'}
+                          style={{
+                            background: isConfirming ? 'rgba(255, 51, 68, 0.2)' : 'transparent',
+                            border: `1px solid ${isConfirming ? '#FF3344' : 'rgba(255, 51, 68, 0.35)'}`,
+                            color: '#FF3344',
+                            fontFamily: "'JetBrains Mono', monospace",
+                            fontSize: '8.5px',
+                            fontWeight: 700,
+                            padding: '2px 6px',
+                            borderRadius: '2px',
+                            cursor: 'pointer',
+                          }}
+                          title={isConfirming ? 'Click to confirm immediate zeroization' : 'Zeroize node'}
                         >
-                          {isConfirming ? '⚠ CONFIRM' : 'KILL'}
+                          {isConfirming ? 'CONFIRM' : 'KILL'}
                         </button>
                       );
                     })()}
@@ -415,29 +251,60 @@ export default function NodeTelemetryPanel({ nodes, selectedNodeId, onSelectNode
             })}
           </tbody>
         </table>
+
+        {nodes.length === 0 && (
+          <div style={{ padding: '32px 16px', textAlign: 'center', color: '#5D6677', fontFamily: "'Segoe UI', sans-serif", fontSize: '11px' }}>
+            No active LoRa field nodes registered. Awaiting telemetry frames...
+          </div>
+        )}
       </div>
 
-      {/* Event Log */}
-      <div style={styles.logSection}>
-        <div style={styles.logHeader} onClick={() => setLogExpanded(!logExpanded)}>
-          <span style={styles.logHeaderTitle}>
-            Event Log {logExpanded ? '▾' : '▸'}
+      {/* Live Event Stream Section */}
+      <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)', maxHeight: '200px', display: 'flex', flexDirection: 'column', background: 'rgba(7, 10, 15, 0.95)' }}>
+        <div
+          onClick={() => setLogExpanded(!logExpanded)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '6px 12px',
+            background: 'rgba(11, 15, 23, 0.9)',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+            cursor: 'pointer',
+          }}
+        >
+          <span style={{ fontFamily: "'Orbitron', sans-serif", fontSize: '9px', fontWeight: 700, letterSpacing: '1.5px', color: '#9DA7B3', textTransform: 'uppercase' }}>
+            Live Event Stream {logExpanded ? '▾' : '▸'}
           </span>
-          <span style={{ fontSize: '9px', color: '#4A4A4A' }}>
-            {eventLog.length} events
+          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', color: '#5D6677' }}>
+            {eventLog.length} EVENTS
           </span>
         </div>
+
         {logExpanded && (
-          <div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
             {eventLog.slice(0, 30).map((entry) => (
-              <div key={entry.id} style={styles.logEntry}>
-                <span style={styles.logTime}>{entry.time}</span>
+              <div
+                key={entry.id}
+                style={{
+                  display: 'flex',
+                  gap: '8px',
+                  padding: '3px 12px',
+                  fontSize: '9.5px',
+                  borderBottom: '1px solid rgba(255, 255, 255, 0.03)',
+                  fontFamily: "'JetBrains Mono', monospace",
+                }}
+              >
+                <span style={{ color: '#5D6677', flexShrink: 0, fontSize: '8.5px' }}>{entry.time}</span>
                 <span
                   style={{
-                    ...styles.logMsg,
-                    ...(entry.severity === 'critical' ? styles.logCritical
-                      : entry.severity === 'warning' ? styles.logWarning
-                      : styles.logNormal),
+                    color:
+                      entry.severity === 'critical'
+                        ? '#FF3344'
+                        : entry.severity === 'warning'
+                        ? '#FFB300'
+                        : '#39FF14',
+                    wordBreak: 'break-word',
                   }}
                 >
                   {entry.message}
@@ -445,8 +312,8 @@ export default function NodeTelemetryPanel({ nodes, selectedNodeId, onSelectNode
               </div>
             ))}
             {eventLog.length === 0 && (
-              <div style={{ ...styles.logEntry, color: '#4A4A4A' }}>
-                Awaiting telemetry stream...
+              <div style={{ padding: '8px 12px', color: '#5D6677', fontSize: '9.5px', fontFamily: "'JetBrains Mono', monospace" }}>
+                Awaiting telemetry frame updates...
               </div>
             )}
           </div>
@@ -455,3 +322,32 @@ export default function NodeTelemetryPanel({ nodes, selectedNodeId, onSelectNode
     </div>
   );
 }
+
+const thStyle: React.CSSProperties = {
+  padding: '7px 8px',
+  textAlign: 'left',
+  fontWeight: 700,
+  fontSize: '9px',
+  letterSpacing: '1px',
+  textTransform: 'uppercase',
+  color: '#5D6677',
+  whiteSpace: 'nowrap',
+};
+
+const tdStyle: React.CSSProperties = {
+  padding: '6px 8px',
+  whiteSpace: 'nowrap',
+  verticalAlign: 'middle',
+};
+
+const statusBadgeStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '4px',
+  fontSize: '8.5px',
+  fontWeight: 600,
+  padding: '1px 5px',
+  borderRadius: '2px',
+  letterSpacing: '0.5px',
+  textTransform: 'uppercase',
+};

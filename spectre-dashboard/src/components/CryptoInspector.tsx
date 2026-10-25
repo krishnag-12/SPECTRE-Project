@@ -1,6 +1,6 @@
 // =============================================================================
-// S.P.E.C.T.R.E. TCC — Sprint G: Live Cryptographic Pipeline Inspector
-// Visualizes AES-256-GCM encryption pipeline + 1-bit tamper test bench
+// S.P.E.C.T.R.E. TCC — Live Cryptographic Pipeline Inspector
+// Visualizes OTA LoRa AES-256-GCM Encryption Stages & 1-Bit Tamper Sandbox
 // =============================================================================
 
 import React, { useState, useMemo } from 'react';
@@ -13,24 +13,30 @@ interface Props {
   onClose: () => void;
 }
 
-// ---- Hex formatting helpers ----
-function formatHexBlocks(hex: string, blockSize = 2, groupSize = 16): string[] {
+// Hexadecimal formatting with memory offset address prefixes
+function formatHexWithOffsets(hex: string, bytesPerLine = 16): string[] {
   const lines: string[] = [];
-  for (let i = 0; i < hex.length; i += blockSize * groupSize) {
-    const chunk = hex.slice(i, i + blockSize * groupSize);
-    const blocks: string[] = [];
-    for (let j = 0; j < chunk.length; j += blockSize) {
-      blocks.push(chunk.slice(j, j + blockSize));
+  const cleanHex = hex.replace(/\s+/g, '');
+  for (let i = 0; i < cleanHex.length; i += bytesPerLine * 2) {
+    const chunk = cleanHex.slice(i, i + bytesPerLine * 2);
+    const offset = (i / 2).toString(16).padStart(4, '0');
+    const octets: string[] = [];
+    for (let j = 0; j < chunk.length; j += 2) {
+      octets.push(chunk.slice(j, j + 2));
     }
-    lines.push(blocks.join(' '));
+    // Group into 8-byte halves for readability
+    const half = Math.ceil(octets.length / 2);
+    const left = octets.slice(0, half).join(' ');
+    const right = octets.slice(half).join(' ');
+    lines.push(`${offset}:  ${left}   ${right}`);
   }
   return lines;
 }
 
-// ---- Simple client-side tamper demo using XOR flip ----
-function tamperCiphertext(hexStr: string, bitPosition: number): string {
+// 1-Bit Tamper Simulation (XOR flip bit in ciphertext)
+function tamperCiphertext(hexStr: string, bytePosition: number): string {
   if (hexStr.length < 2) return hexStr;
-  const byteIndex = Math.min(bitPosition, Math.floor(hexStr.length / 2) - 1);
+  const byteIndex = Math.min(bytePosition, Math.floor(hexStr.length / 2) - 1);
   const hexCharIndex = byteIndex * 2;
   const originalByte = parseInt(hexStr.slice(hexCharIndex, hexCharIndex + 2), 16);
   const flippedByte = originalByte ^ 0x01; // Flip LSB
@@ -38,23 +44,14 @@ function tamperCiphertext(hexStr: string, bitPosition: number): string {
   return hexStr.slice(0, hexCharIndex) + flippedHex + hexStr.slice(hexCharIndex + 2);
 }
 
-const stageColors = {
-  frame: '#00FFFF',
-  iv: '#39FF14',
-  cipher: '#FFBF00',
-  tag: '#FF6B6B',
-  decrypt: '#A78BFA',
-  tamper: '#FF0000',
-};
-
 export default function CryptoInspector({ crypto, nodeId, payload, onClose }: Props) {
   const [tamperActive, setTamperActive] = useState(false);
-  const [tamperBit, setTamperBit] = useState(3);
+  const [tamperByte, setTamperByte] = useState(3);
 
   const tamperedCipher = useMemo(() => {
     if (!crypto) return '';
-    return tamperCiphertext(crypto.ciphertext, tamperBit);
-  }, [crypto, tamperBit]);
+    return tamperCiphertext(crypto.ciphertext, tamperByte);
+  }, [crypto, tamperByte]);
 
   const hasTamperMismatch = tamperActive && crypto && tamperedCipher !== crypto.ciphertext;
 
@@ -67,210 +64,291 @@ export default function CryptoInspector({ crypto, nodeId, payload, onClose }: Pr
             <button style={styles.closeBtn} onClick={onClose}>✕</button>
           </div>
           <div style={styles.emptyState}>
-            <div style={{ fontSize: '48px', opacity: 0.12 }}>🔒</div>
+            <div style={{ fontSize: '40px', opacity: 0.2 }}>🔒</div>
             <div style={styles.emptyText}>Waiting for encrypted packet from field node...</div>
-            <div style={styles.emptyHint}>Send a message from Alpha-1 or Bravo-2 to see live crypto data</div>
+            <div style={styles.emptyHint}>Transmit any command or telemetry message to populate pipeline</div>
           </div>
         </div>
       </div>
     );
   }
 
-  const ivBlocks = formatHexBlocks(crypto.iv);
-  const tagBlocks = formatHexBlocks(crypto.tag);
-  const cipherBlocks = formatHexBlocks(crypto.ciphertext);
+  const ivLines = formatHexWithOffsets(crypto.iv);
+  const tagLines = formatHexWithOffsets(crypto.tag);
+  const cipherLines = formatHexWithOffsets(crypto.ciphertext);
+  const tamperedLines = formatHexWithOffsets(tamperedCipher);
 
   return (
     <div style={styles.overlay} onClick={onClose}>
       <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-        {/* Header */}
+        {/* Header Bar */}
         <div style={styles.header}>
-          <span style={styles.headerTitle}>🔐 CRYPTOGRAPHIC PIPELINE INSPECTOR</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={styles.headerTitle}>🔐 CRYPTOGRAPHIC PIPELINE INSPECTOR</span>
+            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '10px', color: '#00E5FF', background: 'rgba(0, 229, 255, 0.1)', padding: '2px 8px', borderRadius: '3px', border: '1px solid rgba(0, 229, 255, 0.25)' }}>
+              NODE {nodeId}
+            </span>
+          </div>
+
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <span style={{ ...styles.badge, background: crypto.tagMatch ? 'rgba(57,255,20,0.15)' : 'rgba(255,0,0,0.15)', color: crypto.tagMatch ? '#39FF14' : '#FF0000' }}>
-              {crypto.tagMatch ? '✔ AUTHENTICATED' : '✖ AUTH FAILED'}
+            <span
+              style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: '10px',
+                fontWeight: 700,
+                letterSpacing: '0.8px',
+                padding: '3px 10px',
+                borderRadius: '3px',
+                background: crypto.tagMatch ? 'rgba(57, 255, 20, 0.12)' : 'rgba(255, 51, 68, 0.15)',
+                color: crypto.tagMatch ? '#39FF14' : '#FF3344',
+                border: `1px solid ${crypto.tagMatch ? 'rgba(57, 255, 20, 0.35)' : 'rgba(255, 51, 68, 0.35)'}`,
+              }}
+            >
+              {crypto.tagMatch ? '✔ GMAC AUTHENTICATED' : '✖ AUTH INTEGRITY FAILURE'}
             </span>
             <button style={styles.closeBtn} onClick={onClose}>✕</button>
           </div>
         </div>
 
-        {/* Node info bar */}
+        {/* Security Architecture Parameters Bar */}
         <div style={styles.nodeBar}>
-          <span style={{ color: '#00FFFF', fontWeight: 600 }}>{nodeId}</span>
-          <span style={{ color: '#6B6B6B' }}>│</span>
-          <span style={{ color: '#4A4A4A' }}>{crypto.algo}</span>
-          <span style={{ color: '#6B6B6B' }}>│</span>
-          <span style={{ color: '#4A4A4A' }}>Key: 256-bit</span>
-          <span style={{ color: '#6B6B6B' }}>│</span>
-          <span style={{ color: '#4A4A4A' }}>IV: 96-bit</span>
-          <span style={{ color: '#6B6B6B' }}>│</span>
-          <span style={{ color: '#4A4A4A' }}>Tag: 128-bit</span>
+          <div style={styles.metaItem}>
+            <span style={styles.metaLabel}>Cipher Suite:</span>
+            <span style={{ color: '#00E5FF' }}>{crypto.algo || 'AES-256-GCM'}</span>
+          </div>
+          <span style={{ color: 'rgba(255,255,255,0.1)' }}>│</span>
+          <div style={styles.metaItem}>
+            <span style={styles.metaLabel}>Key Space:</span>
+            <span>256-bit ECDH Shared Secret</span>
+          </div>
+          <span style={{ color: 'rgba(255,255,255,0.1)' }}>│</span>
+          <div style={styles.metaItem}>
+            <span style={styles.metaLabel}>Nonce / IV:</span>
+            <span>96-bit CSPRNG</span>
+          </div>
+          <span style={{ color: 'rgba(255,255,255,0.1)' }}>│</span>
+          <div style={styles.metaItem}>
+            <span style={styles.metaLabel}>Auth Tag:</span>
+            <span>128-bit GHASH GMAC</span>
+          </div>
+          <span style={{ color: 'rgba(255,255,255,0.1)' }}>│</span>
+          <div style={styles.metaItem}>
+            <span style={styles.metaLabel}>Acceleration:</span>
+            <span style={{ color: '#39FF14' }}>ESP32 mbedTLS DMA</span>
+          </div>
         </div>
 
+        {/* 5-Stage Step-by-Step Security Pipeline */}
         <div style={styles.pipelineScroll}>
           {/* Stage 1: RF Frame Ingestion */}
           <div style={styles.stage}>
-            <div style={{ ...styles.stageHeader, borderLeftColor: stageColors.frame }}>
-              <span style={styles.stageNum}>STAGE 1</span>
+            <div style={{ ...styles.stageHeader, borderLeftColor: '#00E5FF' }}>
+              <span style={styles.stageNum}>STAGE 01</span>
               <span style={styles.stageTitle}>OVER-THE-AIR LORA RF FRAME INGESTION</span>
+              <span style={styles.stageBadge}>RADIO LAYER</span>
             </div>
             <div style={styles.stageContent}>
-              <div style={styles.label}>Magic Byte</div>
-              <div style={styles.hexValue}><span style={{ color: stageColors.frame }}>0xAB</span> — Encrypted Data Frame</div>
-              <div style={{ ...styles.label, marginTop: '10px' }}>Sender Node ID</div>
-              <div style={styles.hexValue}><span style={{ color: '#00FFFF' }}>{nodeId}</span></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <div style={styles.label}>Frame Magic Header</div>
+                  <div style={styles.hexValue}>
+                    <span style={{ color: '#00E5FF', fontWeight: 700 }}>0xAB</span> — Secure Encrypted Protocol Indicator
+                  </div>
+                </div>
+                <div>
+                  <div style={styles.label}>Origin Field Callsign</div>
+                  <div style={styles.hexValue}>
+                    <span style={{ color: '#39FF14', fontWeight: 700 }}>{nodeId}</span> (Authenticated LoRa Node)
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Stage 2: IV / Nonce */}
           <div style={styles.connector}>▼</div>
+
+          {/* Stage 2: 96-Bit Nonce / IV */}
           <div style={styles.stage}>
-            <div style={{ ...styles.stageHeader, borderLeftColor: stageColors.iv }}>
-              <span style={styles.stageNum}>STAGE 2</span>
-              <span style={styles.stageTitle}>CSPRNG 96-BIT NONCE / IV EXTRACTION</span>
+            <div style={{ ...styles.stageHeader, borderLeftColor: '#39FF14' }}>
+              <span style={styles.stageNum}>STAGE 02</span>
+              <span style={styles.stageTitle}>CSPRNG 96-BIT INITIALIZATION VECTOR (IV)</span>
+              <span style={styles.stageBadge}>NONCE EXTRACTION</span>
             </div>
             <div style={styles.stageContent}>
-              <div style={styles.label}>Initialization Vector (12 Bytes) — <span style={{ color: stageColors.iv }}>esp_fill_random()</span></div>
-              {ivBlocks.map((line, i) => (
-                <div key={i} style={styles.hexLine}>{line}</div>
-              ))}
+              <div style={styles.label}>Initialization Vector (12 Bytes) — Generated via esp_fill_random()</div>
+              <div style={styles.hexBox}>
+                {ivLines.map((line, i) => (
+                  <div key={i} style={styles.hexLine}>{line}</div>
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* Stage 3: Ciphertext */}
           <div style={styles.connector}>▼</div>
+
+          {/* Stage 3: AES-256-GCM Ciphertext */}
           <div style={styles.stage}>
-            <div style={{ ...styles.stageHeader, borderLeftColor: stageColors.cipher }}>
-              <span style={styles.stageNum}>STAGE 3</span>
+            <div style={{ ...styles.stageHeader, borderLeftColor: '#FFB300' }}>
+              <span style={styles.stageNum}>STAGE 03</span>
               <span style={styles.stageTitle}>AES-256 GALOIS COUNTER MODE (GCM) CIPHERTEXT</span>
+              <span style={styles.stageBadge}>{crypto.ciphertext.length / 2} BYTES</span>
             </div>
             <div style={styles.stageContent}>
-              <div style={styles.label}>Encrypted Payload ({crypto.ciphertext.length / 2} Bytes)</div>
-              {cipherBlocks.map((line, i) => (
-                <div key={i} style={styles.hexLine}>{line}</div>
-              ))}
+              <div style={styles.label}>Encrypted Payload Stream</div>
+              <div style={styles.hexBox}>
+                {cipherLines.map((line, i) => (
+                  <div key={i} style={styles.hexLine}>{line}</div>
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* Stage 4: GMAC Tag */}
           <div style={styles.connector}>▼</div>
+
+          {/* Stage 4: GMAC Tag Verification */}
           <div style={styles.stage}>
-            <div style={{ ...styles.stageHeader, borderLeftColor: stageColors.tag }}>
-              <span style={styles.stageNum}>STAGE 4</span>
+            <div style={{ ...styles.stageHeader, borderLeftColor: '#FF3344' }}>
+              <span style={styles.stageNum}>STAGE 04</span>
               <span style={styles.stageTitle}>GALOIS AUTHENTICATION TAG (GMAC 128-BIT)</span>
+              <span style={styles.stageBadge}>INTEGRITY CHECK</span>
             </div>
             <div style={styles.stageContent}>
-              <div style={styles.label}>Authentication Tag (16 Bytes)</div>
-              {tagBlocks.map((line, i) => (
-                <div key={i} style={styles.hexLine}>{line}</div>
-              ))}
-              <div style={{
-                marginTop: '12px',
-                padding: '8px 14px',
-                borderRadius: '4px',
-                fontSize: '11px',
-                fontWeight: 600,
-                letterSpacing: '1px',
-                background: crypto.tagMatch ? 'rgba(57,255,20,0.08)' : 'rgba(255,0,0,0.08)',
-                border: `1px solid ${crypto.tagMatch ? 'rgba(57,255,20,0.3)' : 'rgba(255,0,0,0.3)'}`,
-                color: crypto.tagMatch ? '#39FF14' : '#FF0000',
-              }}>
-                {crypto.tagMatch
-                  ? '✔ GMAC INTEGRITY CHECK PASSED — ZERO BIT TAMPERING'
-                  : '✖ CRITICAL: GMAC AUTHENTICATION TAG MISMATCH // TAMPER DETECTED'}
+              <div style={styles.label}>16-Byte Cryptographic Authentication Tag</div>
+              <div style={styles.hexBox}>
+                {tagLines.map((line, i) => (
+                  <div key={i} style={styles.hexLine}>{line}</div>
+                ))}
+              </div>
+              <div
+                style={{
+                  marginTop: '10px',
+                  padding: '8px 12px',
+                  borderRadius: '4px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  background: crypto.tagMatch ? 'rgba(57, 255, 20, 0.08)' : 'rgba(255, 51, 68, 0.08)',
+                  border: `1px solid ${crypto.tagMatch ? 'rgba(57, 255, 20, 0.3)' : 'rgba(255, 51, 68, 0.3)'}`,
+                  color: crypto.tagMatch ? '#39FF14' : '#FF3344',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+              >
+                <span>{crypto.tagMatch ? '✔' : '✖'}</span>
+                <span>
+                  {crypto.tagMatch
+                    ? 'GMAC INTEGRITY VERIFIED — ZERO BIT FLIPS DETECTED OVER OTA LORA LINK'
+                    : 'CRITICAL GMAC TAG MISMATCH — DATA INTEGRITY COMPROMISED OR TAMPERED'}
+                </span>
               </div>
             </div>
           </div>
 
-          {/* Stage 5: Plaintext Recovery */}
           <div style={styles.connector}>▼</div>
+
+          {/* Stage 5: Hardware Plaintext Recovery */}
           <div style={styles.stage}>
-            <div style={{ ...styles.stageHeader, borderLeftColor: stageColors.decrypt }}>
-              <span style={styles.stageNum}>STAGE 5</span>
-              <span style={styles.stageTitle}>HARDWARE DECRYPTION & PLAINTEXT RECOVERY</span>
+            <div style={{ ...styles.stageHeader, borderLeftColor: '#A78BFA' }}>
+              <span style={styles.stageNum}>STAGE 05</span>
+              <span style={styles.stageTitle}>MBEDTLS HARDWARE DECRYPTION & RECOVERED PAYLOAD</span>
+              <span style={styles.stageBadge}>PLAINTEXT</span>
             </div>
             <div style={styles.stageContent}>
-              <div style={styles.label}>mbedTLS AES-256-GCM Hardware Engine (ESP32)</div>
-              <div style={{
-                padding: '12px 16px',
-                background: '#0A0A0A',
-                borderRadius: '4px',
-                border: '1px solid #1E1E1E',
-                fontFamily: "'JetBrains Mono', monospace",
-                fontSize: '14px',
-                color: '#39FF14',
-                wordBreak: 'break-word' as const,
-                lineHeight: '1.6',
-              }}>
-                {payload || '(empty)'}
+              <div style={styles.label}>Decrypted Payload String</div>
+              <div
+                style={{
+                  padding: '10px 14px',
+                  background: '#04060A',
+                  borderRadius: '4px',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: '13px',
+                  color: '#39FF14',
+                  wordBreak: 'break-word',
+                  lineHeight: '1.5',
+                }}
+              >
+                &gt; {payload || '(empty payload)'}
               </div>
             </div>
           </div>
 
-          {/* Tamper Test Sandbox */}
-          <div style={{ ...styles.connector, color: '#FF6B6B' }}>⚠</div>
-          <div style={{ ...styles.stage, border: '1px solid rgba(255,107,107,0.3)' }}>
-            <div style={{ ...styles.stageHeader, borderLeftColor: stageColors.tamper, background: 'rgba(255,0,0,0.04)' }}>
-              <span style={{ ...styles.stageNum, color: '#FF6B6B' }}>TEST</span>
-              <span style={styles.stageTitle}>1-BIT CIPHERTEXT TAMPER SANDBOX</span>
+          <div style={{ ...styles.connector, color: '#FFB300' }}>⚠</div>
+
+          {/* Interactive 1-Bit Tamper Sandbox */}
+          <div style={{ ...styles.stage, border: '1px solid rgba(255, 179, 0, 0.35)' }}>
+            <div style={{ ...styles.stageHeader, borderLeftColor: '#FFB300', background: 'rgba(255, 179, 0, 0.05)' }}>
+              <span style={{ ...styles.stageNum, color: '#FFB300' }}>TEST BENCH</span>
+              <span style={styles.stageTitle}>1-BIT CIPHERTEXT TAMPER SANDBOX (MITM SIMULATION)</span>
             </div>
             <div style={styles.stageContent}>
-              <div style={{ ...styles.label, color: '#FF6B6B' }}>
-                Simulate Man-in-the-Middle (MitM) bit-flip attack
+              <div style={{ fontFamily: "'Segoe UI', sans-serif", fontSize: '11px', color: '#9DA7B3', marginBottom: '8px' }}>
+                Simulate an active over-the-air Man-in-the-Middle (MitM) bit-flip injection attack to observe Galois Field GHASH polynomial failure.
               </div>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '6px' }}>
+
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
                 <button
-                  style={{
-                    ...styles.tamperBtn,
-                    background: tamperActive ? 'rgba(255,0,0,0.15)' : 'rgba(255,107,107,0.1)',
-                    borderColor: tamperActive ? '#FF0000' : 'rgba(255,107,107,0.3)',
-                    color: tamperActive ? '#FF0000' : '#FF6B6B',
-                  }}
                   onClick={() => setTamperActive(!tamperActive)}
+                  style={{
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    padding: '6px 14px',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    transition: 'all 120ms ease',
+                    background: tamperActive ? 'rgba(255, 51, 68, 0.18)' : 'rgba(255, 179, 0, 0.12)',
+                    borderColor: tamperActive ? '#FF3344' : 'rgba(255, 179, 0, 0.4)',
+                    color: tamperActive ? '#FF3344' : '#FFB300',
+                    border: '1px solid',
+                  }}
                 >
-                  {tamperActive ? '⚡ TAMPERING ACTIVE' : '🔧 FLIP 1 BIT IN CIPHERTEXT'}
+                  {tamperActive ? '⚡ TAMPER ACTIVE' : '🔧 FLIP 1 BIT IN CIPHERTEXT'}
                 </button>
+
                 {tamperActive && (
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '9px', color: '#6B6B6B' }}>
-                    Byte #
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '10px', color: '#9DA7B3', fontFamily: "'JetBrains Mono', monospace" }}>
+                    Target Byte Index:
                     <input
                       type="number"
                       min={0}
                       max={Math.floor(crypto.ciphertext.length / 2) - 1}
-                      value={tamperBit}
-                      onChange={(e) => setTamperBit(Number(e.target.value))}
+                      value={tamperByte}
+                      onChange={(e) => setTamperByte(Number(e.target.value))}
                       style={styles.tamperInput}
                     />
                   </label>
                 )}
               </div>
+
               {tamperActive && (
-                <div style={{ marginTop: '8px' }}>
-                  <div style={styles.label}>Modified Ciphertext (Byte #{tamperBit} LSB flipped)</div>
-                  <div style={{ ...styles.hexLine, color: '#FF6B6B' }}>
-                    {formatHexBlocks(tamperedCipher)[0] || '—'}
+                <div>
+                  <div style={styles.label}>Tampered Ciphertext (Byte #{tamperByte} LSB flipped)</div>
+                  <div style={{ ...styles.hexBox, borderColor: 'rgba(255, 51, 68, 0.3)' }}>
+                    {tamperedLines.slice(0, 2).map((line, i) => (
+                      <div key={i} style={{ ...styles.hexLine, color: '#FF6B6B' }}>{line}</div>
+                    ))}
                   </div>
-                  <div style={{
-                    marginTop: '10px',
-                    padding: '10px 14px',
-                    borderRadius: '4px',
-                    fontSize: '12px',
-                    fontWeight: 700,
-                    letterSpacing: '0.5px',
-                    background: 'rgba(255,0,0,0.08)',
-                    border: '1px solid rgba(255,0,0,0.4)',
-                    color: '#FF0000',
-                    animation: 'flashCritical 0.8s ease infinite',
-                  }}>
+
+                  <div
+                    style={{
+                      marginTop: '8px',
+                      padding: '8px 12px',
+                      borderRadius: '4px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      background: 'rgba(255, 51, 68, 0.1)',
+                      border: '1px solid rgba(255, 51, 68, 0.4)',
+                      color: '#FF3344',
+                    }}
+                  >
                     {hasTamperMismatch
-                      ? '❌ CRITICAL: GMAC AUTHENTICATION TAG MISMATCH // TAMPER DETECTED — PACKET REJECTED & DROPPED'
+                      ? '✖ TAMPER DETECTED: GHASH POLYNOMIAL VERIFICATION FAILED — HARDWARE TAG REJECTED, PACKET DROPPED'
                       : '—'}
                   </div>
-                  <div style={{ marginTop: '10px', fontSize: '11px', color: '#5A5A5A', lineHeight: '1.7' }}>
-                    AES-256-GCM uses a Galois Hash (GHASH) polynomial multiplication over GF(2¹²⁸).
-                    Flipping even 1 bit in the ciphertext produces a completely different GHASH digest,
-                    causing immediate GMAC tag mismatch and packet rejection. This defeats all
-                    bit-flipping, replay, and Man-in-the-Middle (MitM) attacks.
+
+                  <div style={{ marginTop: '8px', fontSize: '10.5px', color: '#5D6677', lineHeight: '1.6', fontFamily: "'Segoe UI', sans-serif" }}>
+                    AES-256-GCM computes a Galois Hash (GHASH) polynomial over GF(2¹²⁸). Because each bit in the ciphertext affects the GHASH digest, altering even a single bit causes an immediate GMAC authentication tag mismatch, ensuring zero-trust payload integrity against eavesdropping and injection attacks.
                   </div>
                 </div>
               )}
@@ -282,153 +360,163 @@ export default function CryptoInspector({ crypto, nodeId, payload, onClose }: Pr
   );
 }
 
-// =============================================================================
-// STYLES
-// =============================================================================
+// Styling definitions
 const styles: Record<string, React.CSSProperties> = {
   overlay: {
     position: 'fixed',
     top: 0, left: 0, right: 0, bottom: 0,
-    background: 'rgba(0,0,0,0.88)',
+    background: 'rgba(3, 5, 8, 0.88)',
     zIndex: 1000,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    backdropFilter: 'blur(6px)',
-    padding: '12px',
+    backdropFilter: 'blur(8px)',
+    padding: '16px',
   },
   modal: {
-    background: '#111111',
-    border: '1px solid #2A2A2A',
-    borderRadius: '10px',
-    width: '820px',
+    background: '#0B0E14',
+    border: '1px solid rgba(0, 229, 255, 0.25)',
+    borderRadius: '8px',
+    width: '840px',
     maxWidth: '96vw',
-    height: '94vh',
-    maxHeight: '94vh',
+    height: '92vh',
+    maxHeight: '92vh',
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
-    boxShadow: '0 24px 80px rgba(0,0,0,0.9), 0 0 0 1px rgba(57,255,20,0.06)',
+    boxShadow: '0 24px 80px rgba(0, 0, 0, 0.9), 0 0 24px rgba(0, 229, 255, 0.08)',
   },
   header: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '14px 20px',
-    borderBottom: '1px solid #2A2A2A',
-    background: '#0D0D0D',
+    padding: '12px 18px',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+    background: 'rgba(14, 18, 26, 0.95)',
     flexShrink: 0,
   },
   headerTitle: {
     fontFamily: "'Orbitron', sans-serif",
-    fontSize: '13px',
+    fontSize: '12.5px',
     fontWeight: 700,
-    letterSpacing: '2px',
-    color: '#39FF14',
+    letterSpacing: '1.8px',
+    color: '#00E5FF',
   },
   closeBtn: {
     background: 'transparent',
-    border: '1px solid #2A2A2A',
-    color: '#6B6B6B',
+    border: '1px solid rgba(255, 255, 255, 0.12)',
+    color: '#9DA7B3',
     fontFamily: "'JetBrains Mono', monospace",
-    fontSize: '14px',
-    padding: '4px 10px',
+    fontSize: '13px',
+    padding: '3px 9px',
     borderRadius: '4px',
     cursor: 'pointer',
   },
-  badge: {
-    fontFamily: "'JetBrains Mono', monospace",
-    fontSize: '10px',
-    fontWeight: 600,
-    letterSpacing: '1px',
-    padding: '3px 10px',
-    borderRadius: '3px',
-  },
   nodeBar: {
     display: 'flex',
-    gap: '10px',
+    gap: '12px',
     alignItems: 'center',
-    padding: '10px 20px',
-    background: '#0A0A0A',
-    borderBottom: '1px solid #1E1E1E',
+    padding: '8px 18px',
+    background: 'rgba(7, 10, 15, 0.9)',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
     fontFamily: "'JetBrains Mono', monospace",
-    fontSize: '11px',
-    flexWrap: 'wrap' as const,
+    fontSize: '10px',
+    color: '#9DA7B3',
+    flexWrap: 'wrap',
     flexShrink: 0,
+  },
+  metaItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '5px',
+  },
+  metaLabel: {
+    color: '#5D6677',
+    textTransform: 'uppercase',
   },
   pipelineScroll: {
     flex: 1,
     minHeight: 0,
-    overflowY: 'auto' as const,
-    overflowX: 'hidden' as const,
-    padding: '20px 24px 32px 24px',
+    overflowY: 'auto',
+    padding: '16px 20px 28px 20px',
     display: 'flex',
     flexDirection: 'column',
-    gap: '6px',
-    overscrollBehavior: 'contain' as const,
-    scrollBehavior: 'smooth' as const,
+    gap: '4px',
   },
   stage: {
-    background: '#1A1A1A',
-    borderRadius: '6px',
-    border: '1px solid #2A2A2A',
+    background: 'rgba(15, 20, 29, 0.85)',
+    borderRadius: '5px',
+    border: '1px solid rgba(255, 255, 255, 0.08)',
     overflow: 'hidden',
     flexShrink: 0,
   },
   stageHeader: {
     display: 'flex',
     alignItems: 'center',
-    gap: '14px',
-    padding: '10px 16px',
+    gap: '10px',
+    padding: '8px 14px',
     borderLeft: '4px solid',
-    background: '#151515',
+    background: 'rgba(18, 24, 34, 0.85)',
   },
   stageNum: {
     fontFamily: "'Orbitron', sans-serif",
-    fontSize: '10px',
+    fontSize: '9.5px',
     fontWeight: 700,
-    letterSpacing: '2px',
-    color: '#7A7A7A',
+    letterSpacing: '1.5px',
+    color: '#00E5FF',
   },
   stageTitle: {
-    fontFamily: "'JetBrains Mono', monospace",
+    fontFamily: "'Segoe UI', sans-serif",
     fontSize: '11px',
-    fontWeight: 600,
-    letterSpacing: '1px',
-    color: '#B0B0B0',
+    fontWeight: 700,
+    letterSpacing: '0.8px',
+    color: '#EDEDED',
+    flex: 1,
+  },
+  stageBadge: {
+    fontFamily: "'JetBrains Mono', monospace",
+    fontSize: '9px',
+    color: '#5D6677',
+    letterSpacing: '0.5px',
+    textTransform: 'uppercase',
   },
   stageContent: {
-    padding: '14px 16px',
+    padding: '12px 14px',
   },
   connector: {
-    textAlign: 'center' as const,
-    color: '#3A3A3A',
-    fontSize: '16px',
-    lineHeight: '22px',
+    textAlign: 'center',
+    color: 'rgba(0, 229, 255, 0.3)',
+    fontSize: '13px',
+    lineHeight: '18px',
     flexShrink: 0,
   },
   label: {
-    fontFamily: "'JetBrains Mono', monospace",
-    fontSize: '10px',
-    fontWeight: 500,
-    letterSpacing: '1px',
-    color: '#5A5A5A',
-    textTransform: 'uppercase' as const,
-    marginBottom: '6px',
+    fontFamily: "'Segoe UI', sans-serif",
+    fontSize: '9.5px',
+    fontWeight: 600,
+    letterSpacing: '0.5px',
+    color: '#5D6677',
+    textTransform: 'uppercase',
+    marginBottom: '4px',
   },
   hexValue: {
     fontFamily: "'JetBrains Mono', monospace",
-    fontSize: '13px',
-    color: '#E0E0E0',
-    lineHeight: '1.6',
+    fontSize: '11.5px',
+    color: '#EDEDED',
+  },
+  hexBox: {
+    background: '#04060A',
+    borderRadius: '4px',
+    border: '1px solid rgba(255, 255, 255, 0.06)',
+    padding: '8px 12px',
   },
   hexLine: {
     fontFamily: "'JetBrains Mono', monospace",
-    fontSize: '12.5px',
-    color: '#A8A8A8',
-    letterSpacing: '1px',
-    lineHeight: '1.8',
-    wordBreak: 'break-all' as const,
+    fontSize: '11px',
+    color: '#A1A7B4',
+    letterSpacing: '0.8px',
+    lineHeight: '1.6',
+    wordBreak: 'break-all',
   },
   emptyState: {
     flex: 1,
@@ -436,41 +524,29 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '16px',
-    padding: '48px 32px',
+    gap: '12px',
+    padding: '40px',
   },
   emptyText: {
-    fontFamily: "'JetBrains Mono', monospace",
+    fontFamily: "'Segoe UI', sans-serif",
     fontSize: '12px',
-    color: '#4A4A4A',
-    textAlign: 'center',
+    color: '#9DA7B3',
+    fontWeight: 600,
   },
   emptyHint: {
-    fontFamily: "'Orbitron', sans-serif",
-    fontSize: '10px',
-    color: '#3A3A3A',
-    letterSpacing: '1.5px',
-  },
-  tamperBtn: {
     fontFamily: "'JetBrains Mono', monospace",
-    fontSize: '11px',
-    fontWeight: 600,
-    letterSpacing: '0.5px',
-    padding: '8px 16px',
-    borderRadius: '4px',
-    border: '1px solid',
-    cursor: 'pointer',
-    transition: 'all 150ms ease',
+    fontSize: '10px',
+    color: '#5D6677',
   },
   tamperInput: {
-    width: '48px',
-    background: '#0D0D0D',
-    border: '1px solid #2A2A2A',
+    width: '44px',
+    background: '#04060A',
+    border: '1px solid rgba(255, 255, 255, 0.15)',
     borderRadius: '3px',
-    color: '#E0E0E0',
+    color: '#EDEDED',
     fontFamily: "'JetBrains Mono', monospace",
-    fontSize: '11px',
-    padding: '4px 6px',
-    textAlign: 'center' as const,
+    fontSize: '10.5px',
+    padding: '3px 6px',
+    textAlign: 'center',
   },
 };

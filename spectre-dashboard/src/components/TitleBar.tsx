@@ -1,5 +1,6 @@
 // =============================================================================
-// S.P.E.C.T.R.E. TCC — Custom Frameless Titlebar
+// S.P.E.C.T.R.E. TCC — Custom Frameless Operational Titlebar
+// High-Precision Mission-Critical Header
 // =============================================================================
 
 import React, { useState, useEffect } from 'react';
@@ -17,166 +18,6 @@ interface Props {
   onToggleShader?: () => void;
 }
 
-const styles: Record<string, any> = {
-  titleBar: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    height: '38px',
-    minHeight: '38px',
-    background: 'rgba(12, 16, 24, 0.88)',
-    backdropFilter: 'blur(12px)',
-    borderBottom: '1px solid rgba(0, 255, 255, 0.15)',
-    WebkitAppRegion: 'drag',
-    padding: '0 12px',
-    zIndex: 1000,
-  },
-  leftSection: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-  },
-  logo: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-  },
-  logoIcon: {
-    width: '8px',
-    height: '8px',
-    borderRadius: '50%',
-    background: '#39FF14',
-    boxShadow: '0 0 6px rgba(57, 255, 20, 0.6), 0 0 12px rgba(57, 255, 20, 0.3)',
-  },
-  logoIconDisconnected: {
-    width: '8px',
-    height: '8px',
-    borderRadius: '50%',
-    background: '#FF0000',
-    boxShadow: '0 0 6px rgba(255, 0, 0, 0.6)',
-    animation: 'pulse 1.5s ease infinite',
-  },
-  title: {
-    fontFamily: "'Orbitron', sans-serif",
-    fontSize: '11px',
-    fontWeight: 700,
-    letterSpacing: '3px',
-    color: '#E0E0E0',
-    textTransform: 'uppercase',
-  },
-  titleAccent: {
-    color: '#39FF14',
-  },
-  centerSection: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-  },
-  statusTag: {
-    fontFamily: "'JetBrains Mono', monospace",
-    fontSize: '9px',
-    fontWeight: 500,
-    letterSpacing: '1.5px',
-    padding: '2px 10px',
-    borderRadius: '2px',
-    textTransform: 'uppercase',
-  },
-  statusConnected: {
-    background: 'rgba(57, 255, 20, 0.1)',
-    color: '#39FF14',
-    border: '1px solid rgba(57, 255, 20, 0.3)',
-  },
-  statusDisconnected: {
-    background: 'rgba(255, 0, 0, 0.1)',
-    color: '#FF0000',
-    border: '1px solid rgba(255, 0, 0, 0.3)',
-  },
-  statusConnecting: {
-    background: 'rgba(255, 191, 0, 0.1)',
-    color: '#FFBF00',
-    border: '1px solid rgba(255, 191, 0, 0.3)',
-  },
-  statusError: {
-    background: 'rgba(255, 68, 68, 0.15)',
-    color: '#FF4444',
-    border: '1px solid rgba(255, 68, 68, 0.3)',
-  },
-  serialBtn: {
-    fontFamily: "'JetBrains Mono', monospace",
-    fontSize: '9px',
-    fontWeight: 700,
-    letterSpacing: '1px',
-    textTransform: 'uppercase',
-    padding: '3px 12px',
-    borderRadius: '3px',
-    border: '1px solid',
-    cursor: 'pointer',
-    transition: 'all 150ms ease',
-    whiteSpace: 'nowrap',
-    WebkitAppRegion: 'no-drag',
-  },
-  connectBtn: {
-    color: '#39FF14',
-    borderColor: 'rgba(57, 255, 20, 0.4)',
-    background: 'rgba(57, 255, 20, 0.08)',
-  },
-  disconnectBtn: {
-    color: '#FF0000',
-    borderColor: 'rgba(255, 0, 0, 0.4)',
-    background: 'rgba(255, 0, 0, 0.08)',
-  },
-  portLabel: {
-    fontFamily: "'JetBrains Mono', monospace",
-    fontSize: '9px',
-    color: '#39FF14',
-    letterSpacing: '0.5px',
-  },
-  rightSection: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-  },
-  clock: {
-    fontFamily: "'JetBrains Mono', monospace",
-    fontSize: '11px',
-    fontWeight: 400,
-    color: '#A0A0A0',
-    letterSpacing: '1px',
-    marginRight: '12px',
-  },
-  windowBtn: {
-    WebkitAppRegion: 'no-drag',
-    width: '14px',
-    height: '14px',
-    borderRadius: '50%',
-    border: 'none',
-    cursor: 'pointer',
-    transition: 'transform 120ms ease, opacity 120ms ease',
-    opacity: 0.7,
-  },
-  windowBtnHover: {
-    opacity: 1,
-    transform: 'scale(1.15)',
-  },
-  minimizeBtn: { background: '#FFBF00' },
-  maximizeBtn: { background: '#39FF14' },
-  closeBtn: { background: '#FF0000' },
-};
-
-function getStatusText(serialState: SerialConnectionState, connected: boolean): string {
-  if (serialState === 'connecting') return '◌ CONNECTING…';
-  if (serialState === 'error') return '✖ LINK ERROR';
-  if (connected || serialState === 'connected') return '● LINK ACTIVE';
-  return '○ NO LINK';
-}
-
-function getStatusStyle(serialState: SerialConnectionState, connected: boolean) {
-  if (serialState === 'connecting') return styles.statusConnecting;
-  if (serialState === 'error') return styles.statusError;
-  if (connected || serialState === 'connected') return styles.statusConnected;
-  return styles.statusDisconnected;
-}
-
 export default function TitleBar({
   connected,
   serialState,
@@ -189,7 +30,6 @@ export default function TitleBar({
   onToggleShader,
 }: Props) {
   const [time, setTime] = useState('');
-  const [hoveredBtn, setHoveredBtn] = useState(null);
 
   useEffect(() => {
     const updateClock = () => {
@@ -209,100 +49,237 @@ export default function TitleBar({
     return () => clearInterval(interval);
   }, []);
 
-  const handleWindowAction = (action) => {
-    if (window.spectre?.window) {
-      window.spectre.window[action]();
-    }
-  };
-
   const isConnected = connected || serialState === 'connected';
 
   return (
-    <div style={styles.titleBar}>
-      <div style={styles.leftSection}>
-        <div style={styles.logo}>
-          <div style={isConnected ? styles.logoIcon : styles.logoIconDisconnected} />
-          <span style={styles.title}>
-            <span style={styles.titleAccent}>S.P.E.C.T.R.E.</span> Tactical Command Center
-          </span>
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        height: '40px',
+        minHeight: '40px',
+        background: 'rgba(10, 14, 20, 0.94)',
+        backdropFilter: 'blur(16px)',
+        borderBottom: '1px solid rgba(0, 229, 255, 0.18)',
+        padding: '0 14px',
+        zIndex: 1000,
+        WebkitAppRegion: 'drag',
+      } as any}
+    >
+      {/* Left: SPECTRE Mission Branding */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div
+            style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              background: isConnected ? '#39FF14' : '#FF3344',
+              boxShadow: isConnected
+                ? '0 0 8px rgba(57, 255, 20, 0.7)'
+                : '0 0 8px rgba(255, 51, 68, 0.7)',
+            }}
+          />
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+            <span
+              style={{
+                fontFamily: "'Orbitron', sans-serif",
+                fontSize: '13px',
+                fontWeight: 800,
+                letterSpacing: '2.5px',
+                color: '#EDEDED',
+              }}
+            >
+              <strong style={{ color: '#00E5FF', fontWeight: 900 }}>S.P.E.C.T.R.E.</strong> TCC
+            </span>
+            <span
+              style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: '9px',
+                color: '#5D6677',
+                letterSpacing: '1px',
+                textTransform: 'uppercase',
+              }}
+            >
+              C2 CONSOLE
+            </span>
+          </div>
         </div>
       </div>
 
-      <div style={styles.centerSection}>
+      {/* Center: Real Connection Status & Tactical Action Buttons */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', WebkitAppRegion: 'no-drag' } as any}>
+        {/* Real Status Badge */}
         <span
           style={{
-            ...styles.statusTag,
-            ...getStatusStyle(serialState, connected),
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: '9.5px',
+            fontWeight: 700,
+            letterSpacing: '1px',
+            padding: '3px 10px',
+            borderRadius: '3px',
+            textTransform: 'uppercase',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            background:
+              serialState === 'connecting'
+                ? 'rgba(255, 179, 0, 0.12)'
+                : serialState === 'error'
+                ? 'rgba(255, 51, 68, 0.15)'
+                : isConnected
+                ? 'rgba(57, 255, 20, 0.12)'
+                : 'rgba(255, 51, 68, 0.12)',
+            color:
+              serialState === 'connecting'
+                ? '#FFB300'
+                : serialState === 'error'
+                ? '#FF3344'
+                : isConnected
+                ? '#39FF14'
+                : '#FF3344',
+            border: `1px solid ${
+              serialState === 'connecting'
+                ? 'rgba(255, 179, 0, 0.35)'
+                : serialState === 'error'
+                ? 'rgba(255, 51, 68, 0.35)'
+                : isConnected
+                ? 'rgba(57, 255, 20, 0.35)'
+                : 'rgba(255, 51, 68, 0.35)'
+            }`,
           }}
         >
-          {getStatusText(serialState, connected)}
+          {serialState === 'connecting'
+            ? '◌ CONNECTING...'
+            : serialState === 'error'
+            ? '✖ LINK ERROR'
+            : isConnected
+            ? '● LINK ACTIVE'
+            : '○ NO CARRIER'}
         </span>
 
-        {/* Serial connect/disconnect button */}
+        {/* Serial Connect / Disconnect Action */}
         {serialState === 'connected' ? (
-          <>
-            {serialPort && <span style={styles.portLabel}>USB</span>}
-            <button
-              style={{ ...styles.serialBtn, ...styles.disconnectBtn }}
-              onClick={onSerialDisconnect}
-            >
-              DISCONNECT
-            </button>
-          </>
+          <button
+            onClick={onSerialDisconnect}
+            style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: '9.5px',
+              fontWeight: 700,
+              letterSpacing: '1px',
+              textTransform: 'uppercase',
+              padding: '4px 12px',
+              borderRadius: '3px',
+              border: '1px solid rgba(255, 51, 68, 0.45)',
+              background: 'rgba(255, 51, 68, 0.1)',
+              color: '#FF3344',
+              cursor: 'pointer',
+              transition: 'all 120ms ease',
+            }}
+          >
+            DISCONNECT {serialPort ? `[${serialPort}]` : ''}
+          </button>
         ) : serialState === 'connecting' ? (
-          <span style={{ ...styles.serialBtn, ...styles.connectBtn, opacity: 0.5, cursor: 'wait' }}>
-            CONNECTING…
+          <span
+            style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: '9.5px',
+              fontWeight: 700,
+              padding: '4px 12px',
+              borderRadius: '3px',
+              border: '1px solid rgba(255, 179, 0, 0.3)',
+              background: 'rgba(255, 179, 0, 0.08)',
+              color: '#FFB300',
+              cursor: 'wait',
+            }}
+          >
+            CONNECTING...
           </span>
         ) : (
           <button
-            style={{ ...styles.serialBtn, ...styles.connectBtn }}
             onClick={onSerialConnect}
+            style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: '9.5px',
+              fontWeight: 700,
+              letterSpacing: '1px',
+              textTransform: 'uppercase',
+              padding: '4px 12px',
+              borderRadius: '3px',
+              border: '1px solid rgba(57, 255, 20, 0.45)',
+              background: 'rgba(57, 255, 20, 0.1)',
+              color: '#39FF14',
+              cursor: 'pointer',
+              transition: 'all 120ms ease',
+            }}
           >
-            ⚡ CONNECT
+            ⚡ CONNECT HARDWARE
           </button>
         )}
 
-        <div style={{ width: '1px', height: '16px', background: '#2A2A2A', margin: '0 4px' }} />
+        <div style={{ width: '1px', height: '16px', background: 'rgba(255, 255, 255, 0.12)', margin: '0 4px' }} />
 
-        {/* Sprint G: Live Crypto Inspector */}
+        {/* Crypto Pipeline Inspector Trigger */}
         <button
-          style={{
-            ...styles.serialBtn,
-            color: '#00FFFF',
-            borderColor: 'rgba(0, 255, 255, 0.4)',
-            background: 'rgba(0, 255, 255, 0.08)',
-          }}
           onClick={onOpenCrypto}
-          title="Inspect live AES-256-GCM encryption pipeline & 1-bit tamper test bench"
+          style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: '9.5px',
+            fontWeight: 700,
+            letterSpacing: '0.8px',
+            padding: '4px 11px',
+            borderRadius: '3px',
+            border: '1px solid rgba(0, 229, 255, 0.4)',
+            background: 'rgba(0, 229, 255, 0.08)',
+            color: '#00E5FF',
+            cursor: 'pointer',
+            transition: 'all 120ms ease',
+          }}
+          title="Inspect live AES-256-GCM pipeline & 1-bit tamper test bench"
         >
           🔐 CRYPTO PIPELINE
         </button>
 
-        {/* Sprint H: Edge-AI EW Threat Console */}
+        {/* EW / ML Threat Console Trigger */}
         <button
-          style={{
-            ...styles.serialBtn,
-            color: '#A78BFA',
-            borderColor: 'rgba(167, 139, 250, 0.4)',
-            background: 'rgba(167, 139, 250, 0.08)',
-          }}
           onClick={onOpenJamming}
+          style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: '9.5px',
+            fontWeight: 700,
+            letterSpacing: '0.8px',
+            padding: '4px 11px',
+            borderRadius: '3px',
+            border: '1px solid rgba(167, 139, 250, 0.4)',
+            background: 'rgba(167, 139, 250, 0.08)',
+            color: '#A78BFA',
+            cursor: 'pointer',
+            transition: 'all 120ms ease',
+          }}
           title="Open live ML RF anomaly gauges & EW attack injection console"
         >
           📡 EW / ML CONSOLE
         </button>
 
-        {/* Tactical ShaderGradient Toggle */}
+        {/* Spectrum FX Toggle */}
         {onToggleShader && (
           <button
-            style={{
-              ...styles.serialBtn,
-              color: shaderActive ? '#39FF14' : '#6B6B6B',
-              borderColor: shaderActive ? 'rgba(57, 255, 20, 0.5)' : 'rgba(255, 255, 255, 0.1)',
-              background: shaderActive ? 'rgba(57, 255, 20, 0.1)' : 'transparent',
-              boxShadow: shaderActive ? '0 0 10px rgba(57, 255, 20, 0.25)' : 'none',
-            }}
             onClick={onToggleShader}
+            style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: '9.5px',
+              fontWeight: 700,
+              letterSpacing: '0.8px',
+              padding: '4px 11px',
+              borderRadius: '3px',
+              border: `1px solid ${shaderActive ? 'rgba(57, 255, 20, 0.5)' : 'rgba(255, 255, 255, 0.12)'}`,
+              background: shaderActive ? 'rgba(57, 255, 20, 0.12)' : 'transparent',
+              color: shaderActive ? '#39FF14' : '#5D6677',
+              boxShadow: shaderActive ? '0 0 10px rgba(57, 255, 20, 0.25)' : 'none',
+              cursor: 'pointer',
+              transition: 'all 120ms ease',
+            }}
             title="Toggle procedural 3D ShaderGradient ambient spectrum backdrop"
           >
             ∿ SPECTRUM FX {shaderActive ? 'ON' : 'OFF'}
@@ -310,8 +287,19 @@ export default function TitleBar({
         )}
       </div>
 
-      <div style={styles.rightSection}>
-        <span style={styles.clock}>{time}</span>
+      {/* Right: Live UTC / IST Clock */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <span
+          style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: '11px',
+            fontWeight: 600,
+            color: '#9DA7B3',
+            letterSpacing: '0.8px',
+          }}
+        >
+          {time}
+        </span>
       </div>
     </div>
   );

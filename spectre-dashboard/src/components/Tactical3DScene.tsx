@@ -1,6 +1,6 @@
 // =============================================================================
 // S.P.E.C.T.R.E. TCC — 3D Tactical Holographic Battlespace
-// Powered by @react-three/fiber & Three.js
+// Engineered with @react-three/fiber & Three.js
 // =============================================================================
 
 import React, { useRef, useState, useMemo, useCallback } from 'react';
@@ -25,87 +25,97 @@ interface Props {
   onSelectNode: (nodeId: string) => void;
 }
 
-// Coordinate scaling: 500m tactical radius mapped to 12.0 Three.js units
-const WORLD_SCALE = 12.0 / 500.0;
+// Coordinate scaling: 500m tactical operational radius mapped to 10.0 Three.js units
+const MAX_TACTICAL_RADIUS = 500.0;
+const SCENE_RADIUS = 10.0;
+const WORLD_SCALE = SCENE_RADIUS / MAX_TACTICAL_RADIUS;
 const RING_DISTANCES = [50, 100, 250, 500];
 
-// Node status colors
+// Node status color mapping
 function getNodeColor(status: string, anomalyScore: number, isSelected: boolean): string {
   if (isSelected) return '#FFFFFF';
-  if (status === 'COMPROMISED') return '#FF0000';
-  if (anomalyScore > 0.6 || status === 'SUSPICIOUS') return '#FFBF00';
-  if (status === 'ZEROIZED') return '#6B6B6B';
-  return '#00FFFF'; // Active / Friendly Tactical Cyan
+  if (status === 'COMPROMISED') return '#FF3344';
+  if (anomalyScore > 0.6 || status === 'SUSPICIOUS') return '#FFB300';
+  if (status === 'ZEROIZED') return '#5D6677';
+  return '#00E5FF'; // Active Friendly Tactical Cyan
 }
 
 // -----------------------------------------------------------------------------
-// Component: 3D Tactical Concentric Distance Rings & Ground Grid
+// Component: Tactical Polar Radar Floor & Range Rings
 // -----------------------------------------------------------------------------
-function TacticalGridAndRings() {
-  const rings = useMemo(() => {
+function TacticalPolarFloor() {
+  // Pre-calculate concentric distance rings
+  const ringGeometries = useMemo(() => {
     return RING_DISTANCES.map((dist) => {
       const radius = dist * WORLD_SCALE;
+      const segments = 96;
       const points: THREE.Vector3[] = [];
-      const segments = 64;
       for (let i = 0; i <= segments; i++) {
         const theta = (i / segments) * Math.PI * 2;
         points.push(new THREE.Vector3(Math.cos(theta) * radius, 0, Math.sin(theta) * radius));
       }
-      const geometry = new THREE.BufferGeometry().setFromPoints(points);
-      return { dist, radius, geometry };
+      return {
+        dist,
+        radius,
+        geometry: new THREE.BufferGeometry().setFromPoints(points),
+        isMaxRange: dist === 500,
+      };
     });
   }, []);
 
+  // Pre-calculate radial azimuth spokes (every 45 degrees)
+  const spokeGeometry = useMemo(() => {
+    const points: THREE.Vector3[] = [];
+    const count = 8;
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2;
+      points.push(new THREE.Vector3(0, 0, 0));
+      points.push(
+        new THREE.Vector3(
+          Math.cos(angle) * SCENE_RADIUS,
+          0,
+          Math.sin(angle) * SCENE_RADIUS
+        )
+      );
+    }
+    return new THREE.BufferGeometry().setFromPoints(points);
+  }, []);
+
   return (
-    <group>
-      {/* 3D Polar/Concentric Range Rings */}
-      {rings.map((ring) => (
-        <group key={ring.dist}>
-          <lineLoop geometry={ring.geometry}>
-            <lineBasicMaterial
-              color="#39FF14"
-              opacity={ring.dist === 500 ? 0.35 : 0.2}
-              transparent
-              linewidth={1}
-            />
-          </lineLoop>
-        </group>
+    <group position={[0, -0.01, 0]}>
+      {/* Concentric Polar Range Rings */}
+      {ringGeometries.map((ring) => (
+        <lineLoop key={ring.dist} geometry={ring.geometry}>
+          <lineBasicMaterial
+            color={ring.isMaxRange ? '#00E5FF' : '#39FF14'}
+            opacity={ring.isMaxRange ? 0.35 : 0.18}
+            transparent
+            linewidth={1}
+          />
+        </lineLoop>
       ))}
 
-      {/* Axis Crosshairs */}
-      <line>
-        <bufferGeometry
-          attach="geometry"
-          onUpdate={(geom) => {
-            geom.setFromPoints([
-              new THREE.Vector3(-13, 0, 0),
-              new THREE.Vector3(13, 0, 0),
-            ]);
-          }}
-        />
-        <lineBasicMaterial color="#39FF14" opacity={0.25} transparent />
-      </line>
-      <line>
-        <bufferGeometry
-          attach="geometry"
-          onUpdate={(geom) => {
-            geom.setFromPoints([
-              new THREE.Vector3(0, 0, -13),
-              new THREE.Vector3(0, 0, 13),
-            ]);
-          }}
-        />
-        <lineBasicMaterial color="#39FF14" opacity={0.25} transparent />
-      </line>
+      {/* Radial Cardinal & Ordinal Spokes */}
+      <lineSegments geometry={spokeGeometry}>
+        <lineBasicMaterial color="#39FF14" opacity={0.12} transparent />
+      </lineSegments>
 
-      {/* Hexagonal Tactical Grid Floor */}
-      <gridHelper args={[26, 26, '#39FF14', '#1A3320']} position={[0, -0.02, 0]} />
+      {/* Subtle fine concentric ticks on tactical floor */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]}>
+        <ringGeometry args={[0.2, SCENE_RADIUS + 0.1, 48]} />
+        <meshBasicMaterial
+          color="#0B131C"
+          transparent
+          opacity={0.65}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
     </group>
   );
 }
 
 // -----------------------------------------------------------------------------
-// Component: 3D Rotating Radar Sweep Cone
+// Component: Rotating 3D Tactical Radar Sweep Cone
 // -----------------------------------------------------------------------------
 function RadarSweepSector() {
   const sweepRef = useRef<THREE.Group>(null);
@@ -117,86 +127,138 @@ function RadarSweepSector() {
   });
 
   const sectorGeometry = useMemo(() => {
-    // 45-degree tactical radar sweep wedge
-    const geom = new THREE.RingGeometry(0.1, 12.0, 32, 1, 0, Math.PI / 4);
-    geom.rotateX(Math.PI / 2); // Lay flat on XZ plane
+    // 38-degree angular radar sweep sector
+    const angle = (38 * Math.PI) / 180;
+    const geom = new THREE.RingGeometry(0.1, SCENE_RADIUS, 32, 1, 0, angle);
+    geom.rotateX(Math.PI / 2);
     return geom;
   }, []);
 
+  const leadingEdgeLine = useMemo(() => {
+    const points = [
+      new THREE.Vector3(0, 0.01, 0),
+      new THREE.Vector3(SCENE_RADIUS, 0.01, 0),
+    ];
+    const geom = new THREE.BufferGeometry().setFromPoints(points);
+    const mat = new THREE.LineBasicMaterial({ color: '#39FF14', opacity: 0.7, transparent: true });
+    return new THREE.Line(geom, mat);
+  }, []);
+
   return (
-    <group ref={sweepRef} position={[0, 0.01, 0]}>
+    <group ref={sweepRef} position={[0, 0.005, 0]}>
+      {/* Phosphor sweep trail volume */}
       <mesh geometry={sectorGeometry}>
         <meshBasicMaterial
           color="#39FF14"
           transparent
-          opacity={0.12}
+          opacity={0.10}
           side={THREE.DoubleSide}
           depthWrite={false}
         />
       </mesh>
-      {/* Leading edge line */}
-      <line>
-        <bufferGeometry
-          attach="geometry"
-          onUpdate={(geom) => {
-            geom.setFromPoints([
-              new THREE.Vector3(0, 0.02, 0),
-              new THREE.Vector3(12.0, 0.02, 0),
-            ]);
-          }}
-        />
-        <lineBasicMaterial color="#39FF14" opacity={0.7} transparent />
-      </line>
+
+      {/* Leading Edge Beam */}
+      <primitive object={leadingEdgeLine} />
     </group>
   );
 }
 
 // -----------------------------------------------------------------------------
-// Component: Central C2 Base Station (Origin)
+// Component: Central C2 Command Base Station (Datum Origin)
 // -----------------------------------------------------------------------------
 function C2BaseStation() {
-  const meshRef = useRef<THREE.Mesh>(null);
-  const ringRef = useRef<THREE.Mesh>(null);
+  const coreRef = useRef<THREE.Mesh>(null);
+  const ring1Ref = useRef<THREE.Mesh>(null);
+  const ring2Ref = useRef<THREE.Mesh>(null);
 
-  useFrame((state) => {
+  useFrame((state, delta) => {
     const t = state.clock.getElapsedTime();
-    if (meshRef.current) {
-      meshRef.current.rotation.y = t * 0.8;
-      meshRef.current.position.y = 0.6 + Math.sin(t * 2) * 0.08;
+    if (coreRef.current) {
+      coreRef.current.rotation.y += delta * 0.6;
+      coreRef.current.position.y = 0.55 + Math.sin(t * 1.8) * 0.04;
     }
-    if (ringRef.current) {
-      ringRef.current.rotation.z = -t * 1.2;
+    if (ring1Ref.current) {
+      ring1Ref.current.rotation.z -= delta * 0.9;
+    }
+    if (ring2Ref.current) {
+      ring2Ref.current.rotation.x += delta * 0.7;
     }
   });
 
   return (
     <group position={[0, 0, 0]}>
-      {/* Glowing C2 Dual Pyramid Core */}
-      <mesh ref={meshRef}>
-        <octahedronGeometry args={[0.45, 0]} />
+      {/* Dual Octahedral Core */}
+      <mesh ref={coreRef}>
+        <octahedronGeometry args={[0.42, 0]} />
         <meshStandardMaterial
-          color="#39FF14"
-          emissive="#39FF14"
-          emissiveIntensity={0.8}
+          color="#00E5FF"
+          emissive="#00E5FF"
+          emissiveIntensity={0.65}
           wireframe
         />
       </mesh>
 
-      {/* Orbiting Halo Ring */}
-      <mesh ref={ringRef} rotation={[Math.PI / 2, 0, 0]} position={[0, 0.6, 0]}>
-        <ringGeometry args={[0.65, 0.72, 32]} />
-        <meshBasicMaterial color="#39FF14" opacity={0.5} transparent side={THREE.DoubleSide} />
+      {/* Inner Gimbal Ring */}
+      <mesh ref={ring1Ref} position={[0, 0.55, 0]}>
+        <torusGeometry args={[0.62, 0.012, 8, 36]} />
+        <meshBasicMaterial color="#39FF14" opacity={0.6} transparent />
       </mesh>
 
-      {/* Ground Projection Circle */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
-        <ringGeometry args={[0.2, 0.8, 32]} />
-        <meshBasicMaterial color="#39FF14" opacity={0.3} transparent />
+      {/* Outer Gimbal Ring */}
+      <mesh ref={ring2Ref} position={[0, 0.55, 0]}>
+        <torusGeometry args={[0.78, 0.012, 8, 36]} />
+        <meshBasicMaterial color="#00E5FF" opacity={0.4} transparent />
       </mesh>
 
-      <pointLight color="#39FF14" intensity={2} distance={5} position={[0, 1, 0]} />
+      {/* Ground Projection Datum Ring */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>
+        <ringGeometry args={[0.25, 0.9, 36]} />
+        <meshBasicMaterial color="#00E5FF" opacity={0.18} transparent />
+      </mesh>
+
+      {/* Base Point Light */}
+      <pointLight color="#00E5FF" intensity={1.8} distance={6} position={[0, 0.9, 0]} />
     </group>
   );
+}
+
+// -----------------------------------------------------------------------------
+// Helper: Create High-Resolution Text Billboard Sprite
+// -----------------------------------------------------------------------------
+function createTextSprite(text: string, color: string): THREE.Sprite {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.clearRect(0, 0, 256, 64);
+    // Subtle background capsule
+    ctx.fillStyle = 'rgba(7, 10, 15, 0.82)';
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(10, 10, 236, 44, 6);
+    ctx.fill();
+    ctx.stroke();
+
+    // Call sign text
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 22px "JetBrains Mono", monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, 128, 32);
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  const material = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    depthTest: false,
+  });
+  const sprite = new THREE.Sprite(material);
+  sprite.scale.set(1.4, 0.35, 1);
+  return sprite;
 }
 
 // -----------------------------------------------------------------------------
@@ -214,56 +276,69 @@ function NodeBeacon3D({
   const [hovered, setHovered] = useState(false);
   const beaconRef = useRef<THREE.Mesh>(null);
   const rippleRef = useRef<THREE.Mesh>(null);
+  const reticleRef = useRef<THREE.Group>(null);
 
-  // Map world position: X -> East/West, Y -> signal height, Z -> North/South (inverted)
+  // Scaled coordinates
   const x = node.posX * WORLD_SCALE;
   const z = -node.posY * WORLD_SCALE;
-  // Tactical elevation: higher RSSI / lower noise elevates node slightly
-  const altitude = 1.0 + Math.max(0, (node.rssi + 110) / 40);
+  // Tactical elevation based on signal strength
+  const altitude = 0.9 + Math.max(0, (node.rssi + 115) / 50);
 
   const color = getNodeColor(node.status, node.anomalyScore, isSelected);
 
-  useFrame((state) => {
+  // Callsign Sprite
+  const sprite = useMemo(() => {
+    return createTextSprite(node.nodeId, color);
+  }, [node.nodeId, color]);
+
+  // Altitude line
+  const tetherLine = useMemo(() => {
+    const points = [
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(0, altitude, 0),
+    ];
+    const geom = new THREE.BufferGeometry().setFromPoints(points);
+    const mat = new THREE.LineBasicMaterial({
+      color,
+      opacity: isSelected ? 0.9 : hovered ? 0.7 : 0.35,
+      transparent: true,
+    });
+    return new THREE.Line(geom, mat);
+  }, [altitude, color, isSelected, hovered]);
+
+  useFrame((state, delta) => {
     const t = state.clock.getElapsedTime();
     if (beaconRef.current) {
-      beaconRef.current.rotation.y = t * 1.5;
-      beaconRef.current.rotation.x = Math.sin(t * 2) * 0.2;
+      beaconRef.current.rotation.y += delta * 1.4;
+      beaconRef.current.rotation.x = Math.sin(t * 1.5) * 0.15;
     }
     if (rippleRef.current) {
-      const scale = 1 + ((t * 1.5 + (node.posX % 3)) % 1) * 2;
-      const opacity = Math.max(0, 1 - ((t * 1.5 + (node.posX % 3)) % 1));
+      const cycle = ((t * 1.2 + (node.posX % 2)) % 1);
+      const scale = 1 + cycle * 1.8;
       rippleRef.current.scale.set(scale, scale, 1);
-      (rippleRef.current.material as THREE.MeshBasicMaterial).opacity = opacity * 0.6;
+      (rippleRef.current.material as THREE.MeshBasicMaterial).opacity = Math.max(0, (1 - cycle) * 0.5);
+    }
+    if (reticleRef.current && isSelected) {
+      reticleRef.current.rotation.y += delta * 1.2;
     }
   });
 
   return (
     <group position={[x, 0, z]}>
       {/* Ground ripple ring under node */}
-      <mesh ref={rippleRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.03, 0]}>
-        <ringGeometry args={[0.2, 0.35, 24]} />
+      <mesh ref={rippleRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
+        <ringGeometry args={[0.25, 0.42, 32]} />
         <meshBasicMaterial color={color} transparent opacity={0.4} />
       </mesh>
 
-      {/* Vertical Laser Beacon Beam from ground to floating node */}
-      <line>
-        <bufferGeometry
-          attach="geometry"
-          onUpdate={(geom) => {
-            geom.setFromPoints([
-              new THREE.Vector3(0, 0, 0),
-              new THREE.Vector3(0, altitude, 0),
-            ]);
-          }}
-        />
-        <lineBasicMaterial color={color} opacity={hovered || isSelected ? 0.9 : 0.4} transparent />
-      </line>
+      {/* Altitude tether laser */}
+      <primitive object={tetherLine} />
 
       {/* Floating 3D Geometric Node Core */}
       <mesh
         ref={beaconRef}
         position={[0, altitude, 0]}
-        scale={hovered ? [1.35, 1.35, 1.35] : isSelected ? [1.2, 1.2, 1.2] : [1, 1, 1]}
+        scale={hovered ? [1.3, 1.3, 1.3] : isSelected ? [1.2, 1.2, 1.2] : [1, 1, 1]}
         onClick={(e) => {
           e.stopPropagation();
           onSelect(node.nodeId);
@@ -278,65 +353,72 @@ function NodeBeacon3D({
           document.body.style.cursor = 'default';
         }}
       >
-        <octahedronGeometry args={[0.35, 0]} />
+        <octahedronGeometry args={[0.32, 0]} />
         <meshStandardMaterial
           color={color}
           emissive={color}
-          emissiveIntensity={isSelected ? 1.0 : hovered ? 0.8 : 0.5}
+          emissiveIntensity={isSelected ? 0.9 : hovered ? 0.75 : 0.45}
           wireframe={!isSelected && !hovered}
         />
       </mesh>
 
-      {/* Selected Halo Ring */}
+      {/* Targeting Reticle Brackets (when selected) */}
       {isSelected && (
-        <mesh position={[0, altitude, 0]} rotation={[Math.PI / 4, 0, 0]}>
-          <ringGeometry args={[0.55, 0.62, 32]} />
-          <meshBasicMaterial color="#FFFFFF" opacity={0.8} transparent side={THREE.DoubleSide} />
-        </mesh>
+        <group ref={reticleRef} position={[0, altitude, 0]}>
+          <mesh rotation={[Math.PI / 4, 0, 0]}>
+            <torusGeometry args={[0.55, 0.015, 8, 24]} />
+            <meshBasicMaterial color="#FFFFFF" opacity={0.85} transparent />
+          </mesh>
+        </group>
       )}
 
-      {/* Local Beacon Glow Point Light */}
-      <pointLight color={color} intensity={hovered ? 1.5 : 0.8} distance={3} position={[0, altitude, 0]} />
+      {/* Floating Callsign Label */}
+      <primitive object={sprite} position={[0, altitude + 0.65, 0]} />
+
+      {/* Local Beacon Point Light */}
+      <pointLight
+        color={color}
+        intensity={hovered || isSelected ? 1.6 : 0.7}
+        distance={3.5}
+        position={[0, altitude, 0]}
+      />
     </group>
   );
 }
 
 // -----------------------------------------------------------------------------
-// Component: Ambient Floating Tactical Particle Dust
+// Component: Ambient Floating Tactical Dust Particles
 // -----------------------------------------------------------------------------
 function AmbientTacticalParticles() {
-  const count = 180;
+  const count = 120;
   const pointsRef = useRef<THREE.Points>(null);
 
   const [positions] = useMemo(() => {
     const pos = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
-      pos[i * 3 + 0] = (Math.random() - 0.5) * 26;
-      pos[i * 3 + 1] = Math.random() * 6;
-      pos[i * 3 + 2] = (Math.random() - 0.5) * 26;
+      pos[i * 3 + 0] = (Math.random() - 0.5) * (SCENE_RADIUS * 2);
+      pos[i * 3 + 1] = Math.random() * 4.5;
+      pos[i * 3 + 2] = (Math.random() - 0.5) * (SCENE_RADIUS * 2);
     }
     return [pos];
   }, []);
 
-  useFrame((state) => {
+  useFrame((_, delta) => {
     if (pointsRef.current) {
-      pointsRef.current.rotation.y = state.clock.getElapsedTime() * 0.02;
+      pointsRef.current.rotation.y += delta * 0.015;
     }
   });
 
   return (
     <points ref={pointsRef}>
       <bufferGeometry>
-        <bufferAttribute
-          attach="attributes-position"
-          args={[positions, 3]}
-        />
+        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
       </bufferGeometry>
       <pointsMaterial
-        size={0.06}
-        color="#39FF14"
+        size={0.05}
+        color="#00E5FF"
         transparent
-        opacity={0.35}
+        opacity={0.3}
         sizeAttenuation
       />
     </points>
@@ -344,7 +426,7 @@ function AmbientTacticalParticles() {
 }
 
 // -----------------------------------------------------------------------------
-// Component: Interactive Orbit Camera Rig (Mouse Drag + Zoom)
+// Component: Interactive Orbit Camera Rig
 // -----------------------------------------------------------------------------
 function CameraRig({
   distance,
@@ -356,13 +438,13 @@ function CameraRig({
   rotationY: number;
 }) {
   useFrame(({ camera }) => {
-    // Spherical coordinates
+    // Spherical coordinates with clamped horizon
     const x = distance * Math.sin(rotationY) * Math.cos(rotationX);
     const y = distance * Math.sin(rotationX);
     const z = distance * Math.cos(rotationY) * Math.cos(rotationX);
 
-    camera.position.set(x, Math.max(1.5, y), z);
-    camera.lookAt(0, 0.8, 0);
+    camera.position.set(x, Math.max(1.8, y), z);
+    camera.lookAt(0, 0.6, 0);
   });
 
   return null;
@@ -372,10 +454,10 @@ function CameraRig({
 // Main Tactical 3D Scene Export
 // -----------------------------------------------------------------------------
 export default function Tactical3DScene({ nodes, selectedNodeId, onSelectNode }: Props) {
-  // Orbit camera state
-  const [rotationX, setRotationX] = useState(0.55); // Vertical angle (~32 degrees above horizon)
-  const [rotationY, setRotationY] = useState(0.4);  // Horizontal azimuth
-  const [distance, setDistance] = useState(17.0);   // Camera distance
+  // Orbit camera parameters
+  const [rotationX, setRotationX] = useState(0.52); // ~30 degrees above ground plane
+  const [rotationY, setRotationY] = useState(0.45); // Azimuth angle
+  const [distance, setDistance] = useState(14.5);   // Framed for tight tactical awareness
   const isDraggingRef = useRef(false);
   const lastMousePosRef = useRef({ x: 0, y: 0 });
 
@@ -390,8 +472,8 @@ export default function Tactical3DScene({ nodes, selectedNodeId, onSelectNode }:
     const deltaY = e.clientY - lastMousePosRef.current.y;
     lastMousePosRef.current = { x: e.clientX, y: e.clientY };
 
-    setRotationY((prev) => prev - deltaX * 0.006);
-    setRotationX((prev) => Math.max(0.12, Math.min(1.4, prev + deltaY * 0.006)));
+    setRotationY((prev) => prev - deltaX * 0.005);
+    setRotationX((prev) => Math.max(0.12, Math.min(1.35, prev + deltaY * 0.005)));
   }, []);
 
   const handleMouseUp = useCallback(() => {
@@ -400,13 +482,13 @@ export default function Tactical3DScene({ nodes, selectedNodeId, onSelectNode }:
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
-    setDistance((prev) => Math.max(7.0, Math.min(28.0, prev + e.deltaY * 0.015)));
+    setDistance((prev) => Math.max(6.0, Math.min(22.0, prev + e.deltaY * 0.012)));
   }, []);
 
   const resetView = useCallback(() => {
-    setRotationX(0.55);
-    setRotationY(0.4);
-    setDistance(17.0);
+    setRotationX(0.52);
+    setRotationY(0.45);
+    setDistance(14.5);
   }, []);
 
   return (
@@ -415,7 +497,7 @@ export default function Tactical3DScene({ nodes, selectedNodeId, onSelectNode }:
         position: 'relative',
         width: '100%',
         height: '100%',
-        background: '#070A0E',
+        background: '#05070B',
         overflow: 'hidden',
         userSelect: 'none',
       }}
@@ -426,15 +508,16 @@ export default function Tactical3DScene({ nodes, selectedNodeId, onSelectNode }:
       onWheel={handleWheel}
     >
       <Canvas
-        camera={{ fov: 45, near: 0.1, far: 100 }}
+        camera={{ fov: 42, near: 0.1, far: 80 }}
+        dpr={[1, Math.min(window.devicePixelRatio || 1, 2)]}
         style={{ width: '100%', height: '100%' }}
       >
-        <ambientLight intensity={0.4} color="#1A2D3A" />
-        <directionalLight position={[10, 20, 10]} intensity={0.6} color="#B8F4FF" />
+        <ambientLight intensity={0.45} color="#0E1924" />
+        <directionalLight position={[8, 16, 8]} intensity={0.65} color="#D0F0FF" />
 
         <CameraRig distance={distance} rotationX={rotationX} rotationY={rotationY} />
 
-        <TacticalGridAndRings />
+        <TacticalPolarFloor />
         <RadarSweepSector />
         <C2BaseStation />
         <AmbientTacticalParticles />
@@ -449,7 +532,7 @@ export default function Tactical3DScene({ nodes, selectedNodeId, onSelectNode }:
         ))}
       </Canvas>
 
-      {/* 3D Viewport Controls & HUD Overlay */}
+      {/* 3D Viewport Controls HUD */}
       <div
         style={{
           position: 'absolute',
@@ -458,33 +541,32 @@ export default function Tactical3DScene({ nodes, selectedNodeId, onSelectNode }:
           display: 'flex',
           gap: '8px',
           alignItems: 'center',
-          pointerEvents: 'auto',
           zIndex: 10,
         }}
       >
         <button
           onClick={resetView}
           style={{
-            background: 'rgba(10, 20, 15, 0.85)',
-            border: '1px solid rgba(57, 255, 20, 0.4)',
-            color: '#39FF14',
+            background: 'rgba(11, 15, 23, 0.88)',
+            border: '1px solid rgba(0, 229, 255, 0.35)',
+            color: '#00E5FF',
             fontFamily: "'JetBrains Mono', monospace",
             fontSize: '9px',
             fontWeight: 700,
             letterSpacing: '1px',
-            padding: '4px 10px',
-            borderRadius: '3px',
+            padding: '5px 12px',
+            borderRadius: '4px',
             cursor: 'pointer',
-            boxShadow: '0 0 10px rgba(57, 255, 20, 0.15)',
-            backdropFilter: 'blur(4px)',
+            backdropFilter: 'blur(8px)',
+            transition: 'all 120ms ease',
           }}
-          title="Reset 3D camera to default tactical azimuth"
+          title="Reset 3D camera to default tactical perspective"
         >
           ⟲ RESET 3D VIEW
         </button>
       </div>
 
-      {/* Orbit Tip */}
+      {/* Operational Orbit Cue */}
       <div
         style={{
           position: 'absolute',
@@ -492,12 +574,12 @@ export default function Tactical3DScene({ nodes, selectedNodeId, onSelectNode }:
           left: '12px',
           fontFamily: "'JetBrains Mono', monospace",
           fontSize: '9px',
-          color: 'rgba(57, 255, 20, 0.5)',
+          color: 'rgba(0, 229, 255, 0.45)',
           letterSpacing: '1px',
           pointerEvents: 'none',
         }}
       >
-        ◈ DRAG TO ORBIT 360° | SCROLL TO ZOOM
+        ◈ DRAG TO ORBIT 360° │ SCROLL TO ZOOM
       </div>
     </div>
   );
