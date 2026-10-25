@@ -11,6 +11,7 @@ import C2Panel from './components/C2Panel';
 import StatusBar from './components/StatusBar';
 import CryptoInspector from './components/CryptoInspector';
 import JammingConsole from './components/JammingConsole';
+import TacticalShaderBackground from './components/TacticalShaderBackground';
 import { WebSerialBridge } from './webSerialBridge';
 import type { SerialConnectionState } from './webSerialBridge';
 import type {
@@ -360,6 +361,7 @@ export default function App() {
   const [serialPortName, setSerialPortName] = useState<string | null>(null);
   const [showCryptoModal, setShowCryptoModal] = useState(false);
   const [showJammingModal, setShowJammingModal] = useState(false);
+  const [ambientShaderActive, setAmbientShaderActive] = useState(true);
 
   // Detect if we're running in Electron (has Socket.IO backend) or browser-only
   const isElectron = !!window.spectre;
@@ -517,7 +519,8 @@ export default function App() {
   const selectedNode = state.selectedNodeId ? state.nodes[state.selectedNodeId] : null;
 
   return (
-    <div className="tcc-app">
+    <div className="tcc-app" style={{ position: 'relative' }}>
+      <TacticalShaderBackground active={ambientShaderActive} opacity={0.3} mode="stealth" />
       <TitleBar
         connected={state.stats.connected}
         serialState={serialState}
@@ -526,6 +529,8 @@ export default function App() {
         onSerialDisconnect={handleSerialDisconnect}
         onOpenCrypto={() => setShowCryptoModal(true)}
         onOpenJamming={() => setShowJammingModal(true)}
+        shaderActive={ambientShaderActive}
+        onToggleShader={() => setAmbientShaderActive((prev) => !prev)}
       />
 
       <div className="tcc-main">

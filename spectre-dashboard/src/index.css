@@ -174,6 +174,8 @@ html, body, #root {
   width: 100vw;
   background: var(--bg-primary);
   animation: bootFlicker 1.5s ease forwards;
+  position: relative;
+  overflow: hidden;
 }
 
 .tcc-main {
@@ -181,32 +183,38 @@ html, body, #root {
   flex: 1;
   overflow: hidden;
   gap: 1px;
-  background: var(--border-tactical);
+  background: rgba(0, 255, 255, 0.08);
+  position: relative;
+  z-index: 10;
 }
 
-/* Three-panel layout */
+/* Three-panel layout with tactical glassmorphism */
 .panel {
-  background: var(--bg-secondary);
+  background: rgba(11, 15, 22, 0.76);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .panel--left {
   flex: 0 0 28%;
   min-width: 320px;
-  border-right: 1px solid var(--border-tactical);
+  border-right: 1px solid rgba(0, 255, 255, 0.12);
 }
 
 .panel--center {
   flex: 1 1 50%;
   position: relative;
+  background: rgba(7, 10, 14, 0.7);
 }
 
 .panel--right {
   flex: 0 0 25%;
   min-width: 300px;
-  border-left: 1px solid var(--border-tactical);
+  border-left: 1px solid rgba(0, 255, 255, 0.12);
 }
 
 /* ---- Panel Headers ---- */
@@ -215,9 +223,11 @@ html, body, #root {
   align-items: center;
   justify-content: space-between;
   padding: var(--gap-sm) var(--gap-md);
-  background: var(--bg-panel);
-  border-bottom: 1px solid var(--border-tactical);
-  min-height: 36px;
+  background: rgba(16, 21, 30, 0.85);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgba(0, 255, 255, 0.12);
+  min-height: 38px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
 .panel-header__title {

@@ -13,6 +13,8 @@ interface Props {
   onSerialDisconnect: () => void;
   onOpenCrypto?: () => void;
   onOpenJamming?: () => void;
+  shaderActive?: boolean;
+  onToggleShader?: () => void;
 }
 
 const styles: Record<string, any> = {
@@ -22,8 +24,9 @@ const styles: Record<string, any> = {
     justifyContent: 'space-between',
     height: '38px',
     minHeight: '38px',
-    background: 'linear-gradient(180deg, #1A1A1A 0%, #121212 100%)',
-    borderBottom: '1px solid #2A2A2A',
+    background: 'rgba(12, 16, 24, 0.88)',
+    backdropFilter: 'blur(12px)',
+    borderBottom: '1px solid rgba(0, 255, 255, 0.15)',
     WebkitAppRegion: 'drag',
     padding: '0 12px',
     zIndex: 1000,
@@ -182,6 +185,8 @@ export default function TitleBar({
   onSerialDisconnect,
   onOpenCrypto,
   onOpenJamming,
+  shaderActive = true,
+  onToggleShader,
 }: Props) {
   const [time, setTime] = useState('');
   const [hoveredBtn, setHoveredBtn] = useState(null);
@@ -286,6 +291,23 @@ export default function TitleBar({
         >
           📡 EW / ML CONSOLE
         </button>
+
+        {/* Tactical ShaderGradient Toggle */}
+        {onToggleShader && (
+          <button
+            style={{
+              ...styles.serialBtn,
+              color: shaderActive ? '#39FF14' : '#6B6B6B',
+              borderColor: shaderActive ? 'rgba(57, 255, 20, 0.5)' : 'rgba(255, 255, 255, 0.1)',
+              background: shaderActive ? 'rgba(57, 255, 20, 0.1)' : 'transparent',
+              boxShadow: shaderActive ? '0 0 10px rgba(57, 255, 20, 0.25)' : 'none',
+            }}
+            onClick={onToggleShader}
+            title="Toggle procedural 3D ShaderGradient ambient spectrum backdrop"
+          >
+            ∿ SPECTRUM FX {shaderActive ? 'ON' : 'OFF'}
+          </button>
+        )}
       </div>
 
       <div style={styles.rightSection}>
