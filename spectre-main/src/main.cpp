@@ -11,7 +11,7 @@
 #define C2_BRIDGE_MODE 0
 #define ENABLE_FHSS 0
 #define ENABLE_DTN 1
-#define NODE_ID "Alpha-1"
+#define NODE_ID "Charlie-3" // Unique node identifier (max 16 chars)
 
 #include <Arduino.h>
 #include <Wire.h>
@@ -334,8 +334,79 @@ static char serialCmdBuffer[128];
 static size_t serialCmdPos = 0;
 
 // =============================================================================
+// ROUTING, TARGET MATCHING & PACKET DEDUPLICATION
+// =============================================================================
+
+struct SeenPacket {
+    uint8_t iv[12];
+    uint32_t timestamp;
+};
+#define SEEN_PACKET_CACHE_SIZE 32
+static SeenPacket seenPackets[SEEN_PACKET_CACHE_SIZE];
+static size_t seenPacketHead = 0;
+
+static bool hasSeenPacket(const uint8_t* iv) {
+    if (!iv) return false;
+    uint32_t now = millis();
+    for (size_t i = 0; i < SEEN_PACKET_CACHE_SIZE; i++) {
+        if ((now - seenPackets[i].timestamp < 15000) &&
+            memcmp(seenPackets[i].iv, iv, 12) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void markPacketSeen(const uint8_t* iv) {
+    if (!iv) return;
+    memcpy(seenPackets[seenPacketHead].iv, iv, 12);
+    seenPackets[seenPacketHead].timestamp = millis();
+    seenPacketHead = (seenPacketHead + 1) % SEEN_PACKET_CACHE_SIZE;
+}
+
+// Case-insensitive flexible node target matching (e.g. "Alpha", "alpha", "Alpha-1", "*")
+static bool isNodeTargetMatch(const char* target, const char* myNodeId) {
+    if (!target || !myNodeId) return false;
+    while (*target == ' ' || *target == '\t') target++;
+    char clean[32] = {0};
+    size_t i = 0;
+    while (target[i] != '\0' && target[i] != ':' && target[i] != '\r' &&
+           target[i] != '\n' && target[i] != ' ' && i < sizeof(clean) - 1) {
+        clean[i] = target[i];
+        i++;
+    }
+    clean[i] = '\0';
+    if (clean[0] == '\0') return false;
+    if (clean[0] == '*') return true; // Wildcard / Broadcast
+    if (strcasecmp(clean, myNodeId) == 0) return true; // Exact match (case-insensitive)
+
+    // Prefix match (e.g. clean "Alpha" or "alpha" matching "Alpha-1")
+    size_t cLen = strlen(clean);
+    size_t mLen = strlen(myNodeId);
+    if (cLen >= 3 && strncasecmp(myNodeId, clean, cLen) == 0) {
+        if (myNodeId[cLen] == '-' || myNodeId[cLen] == '_' || myNodeId[cLen] == '\0') {
+            return true;
+        }
+    }
+    if (mLen >= 3 && strncasecmp(clean, myNodeId, mLen) == 0) {
+        if (clean[mLen] == '-' || clean[mLen] == '_' || clean[mLen] == '\0') {
+            return true;
+        }
+    }
+    return false;
+}
+
+// =============================================================================
 // CRYPTO HELPERS
 // =============================================================================
+
+// Default pre-shared network session key for immediate out-of-the-box operation
+static const uint8_t DEFAULT_NET_KEY[32] = {
+    0x53, 0x50, 0x45, 0x43, 0x54, 0x52, 0x45, 0x5f, // S P E C T R E _
+    0x54, 0x41, 0x43, 0x54, 0x49, 0x43, 0x41, 0x4c, // T A C T I C A L
+    0x5f, 0x4d, 0x45, 0x53, 0x48, 0x5f, 0x4b, 0x45, // _ M E S H _ K E
+    0x59, 0x5f, 0x32, 0x30, 0x32, 0x36, 0x21, 0x23  // Y _ 2 0 2 6 ! #
+};
 
 void initCryptoAndGenerateKeys() {
     DEBUG_PRINTLN("[Crypto] Initializing Crypto & Preferences...");
@@ -345,8 +416,13 @@ void initCryptoAndGenerateKeys() {
         if (len == 32) {
             keyExchangeComplete = true;
             DEBUG_PRINTLN("[Crypto] Restored Network Session Key from NVS.");
+            return;
         }
     }
+    // Pre-shared default network session key for immediate out-of-the-box operation
+    memcpy(AES_KEY, DEFAULT_NET_KEY, 32);
+    keyExchangeComplete = true;
+    DEBUG_PRINTLN("[Crypto] Initialized with Pre-Shared Default Network Session Key.");
 }
 
 static int aes256Encrypt(const char* plaintext, const uint8_t* iv, uint8_t* ciphertext, uint8_t* tag) {
@@ -1027,6 +1103,27 @@ void taskRadioAndCrypto(void* pvParameters) {
                     
                     bool authOk = aes256Decrypt(rxPkt->encrypted, rxPkt->payloadLen, rxPkt->iv, rxPkt->tag, inMsg.payload);
                     if (authOk) {
+                        const char* senderNodeId = rxPkt->nodeId[0] != '\0' ? rxPkt->nodeId : "Unknown-0";
+
+                        // Ignore packets originating from this node itself (echo/relay loop prevention)
+                        if (strncmp(senderNodeId, NODE_ID, NODE_ID_MAX_LEN) == 0) {
+                            radio.standby();
+                            configureDioForRx();
+                            radio.startReceive();
+                            rxFlag = false;
+                            continue;
+                        }
+
+                        // Mesh packet deduplication check
+                        if (hasSeenPacket(rxPkt->iv)) {
+                            radio.standby();
+                            configureDioForRx();
+                            radio.startReceive();
+                            rxFlag = false;
+                            continue;
+                        }
+                        markPacketSeen(rxPkt->iv);
+
 #if ENABLE_FHSS
                         // Successful decryption confirms synchronization
                         if (!fhssSynchronized && fhssCsprngSeeded) {
@@ -1038,30 +1135,40 @@ void taskRadioAndCrypto(void* pvParameters) {
 
 #if ENABLE_DTN
                         // DTN: Update node presence — this node is alive
-                        const char* senderNodeId = rxPkt->nodeId[0] != '\0' ? rxPkt->nodeId : "Unknown-0";
                         dtnUpdateNodePresence(senderNodeId);
 #endif
 
-                        // ─── PING COMMAND HANDLER ───────────────────────
+                        // ─── PING COMMAND HANDLER ───────────────────────────
+                        bool isPingForUs = false;
                         if (strncmp(inMsg.payload, "CMD:PING:", 9) == 0) {
                             const char* targetId = inMsg.payload + 9;
-                            if (strcmp(targetId, NODE_ID) == 0 || targetId[0] == '*' || strncmp(targetId, NODE_ID, strlen(NODE_ID)) == 0) {
+                            if (isNodeTargetMatch(targetId, NODE_ID)) {
+                                isPingForUs = true;
+                                DEBUG_PRINTF("[Radio] PING received from %s for %s -> replying with PONG\n", senderNodeId, NODE_ID);
                                 MessageEvent pongMsg;
                                 memset(&pongMsg, 0, sizeof(pongMsg));
                                 pongMsg.messageID = 0x91;
                                 pongMsg.hopCount = 2;
                                 snprintf(pongMsg.payload, MAX_PAYLOAD_LEN, "PONG:%s:NOMINAL", NODE_ID);
                                 xQueueSend(txQueue, &pongMsg, 0);
+
+                                // Wake display and show on-screen ping notification
+                                MessageEvent pingUiMsg;
+                                memset(&pingUiMsg, 0, sizeof(pingUiMsg));
+                                pingUiMsg.messageID = 0x90;
+                                pingUiMsg.hopCount = rxPkt->hopCount;
+                                snprintf(pingUiMsg.payload, MAX_PAYLOAD_LEN, "C2 PING: %s [PONG SENT]", NODE_ID);
+                                xQueueSend(rxQueue, &pingUiMsg, 0);
                             }
                         }
 
-                        // ─── REMOTE ZEROIZATION HANDLER ─────────────────
+                        // ─── REMOTE ZEROIZATION HANDLER ─────────────────────
                         // Check if this is a CMD:ZERO targeting THIS node.
                         // Format: "CMD:ZERO:Alpha-1" — only zeroize if the
                         // target node ID matches our own NODE_ID.
                         if (strncmp(inMsg.payload, "CMD:ZERO:", 9) == 0) {
                             const char* targetId = inMsg.payload + 9;
-                            if (strcmp(targetId, NODE_ID) == 0) {
+                            if (isNodeTargetMatch(targetId, NODE_ID) && strcmp(targetId, "*") != 0) {
                                 // === ZEROIZE THIS DEVICE ===
                                 // 1. Wipe AES-256 symmetric key
                                 memset(AES_KEY, 0, 32);
@@ -1099,8 +1206,42 @@ void taskRadioAndCrypto(void* pvParameters) {
                         }
                         // ─── END REMOTE ZEROIZATION ─────────────────────
 
-                        // Don't clutter inbox with background heartbeat telemetry
-                        if (rxPkt->messageID != 0xA0) {
+                        // System messages should never clutter the user inbox (PING, PONG, ZERO, Heartbeat)
+                        bool isSystemCmd = (rxPkt->messageID == 0x90 || rxPkt->messageID == 0x91 ||
+                                            rxPkt->messageID == 0x92 || rxPkt->messageID == 0xA0);
+
+                        // Destination filtering for user inbox
+                        bool isForUs = true;
+                        bool isIndividualUnicast = false;
+
+                        if (strncmp(inMsg.payload, "TAC:L", 5) == 0) {
+                            char mode = tacParseMode(inMsg.payload);
+                            if (mode == 'I') {
+                                isIndividualUnicast = true;
+                                char target[16] = {0};
+                                if (tacParseTarget(inMsg.payload, target, sizeof(target))) {
+                                    if (!isNodeTargetMatch(target, NODE_ID)) {
+                                        isForUs = false;
+                                    }
+                                }
+                            }
+                        } else if (strncmp(inMsg.payload, "MSG:", 4) == 0) {
+                            const char* targetStart = inMsg.payload + 4;
+                            const char* colon = strchr(targetStart, ':');
+                            if (colon) {
+                                char target[16] = {0};
+                                size_t len = (size_t)(colon - targetStart);
+                                if (len >= sizeof(target)) len = sizeof(target) - 1;
+                                strncpy(target, targetStart, len);
+                                target[len] = '\0';
+                                isIndividualUnicast = (strcmp(target, "*") != 0);
+                                if (!isNodeTargetMatch(target, NODE_ID)) {
+                                    isForUs = false;
+                                }
+                            }
+                        }
+
+                        if (!isSystemCmd && isForUs) {
                             xQueueSend(rxQueue, &inMsg, 0);
                         }
 #if C2_BRIDGE_MODE
@@ -1118,8 +1259,10 @@ void taskRadioAndCrypto(void* pvParameters) {
                             (unsigned long)(millis() / 1000)
                         );
 #endif
-                        // Mesh relay with random backoff
-                        if (rxPkt->hopCount > 0) {
+                        // Mesh relay with random backoff:
+                        // Relay only if hops remain, and message has NOT already reached its final destination
+                        bool shouldRelay = (rxPkt->hopCount > 0) && !(isIndividualUnicast && isForUs) && !isPingForUs;
+                        if (shouldRelay) {
                             rxPkt->hopCount--;
                             radio.standby();
                             vTaskDelay((esp_random() % 200 + 50) / portTICK_PERIOD_MS);
@@ -1149,6 +1292,11 @@ void taskRadioAndCrypto(void* pvParameters) {
                                 strtok_r(nullptr, ":", &sv); // TYPE
                                 char* target = strtok_r(nullptr, ":", &sv);
                                 if (target && strlen(target) > 0) destNode = target;
+                            } else if (strncmp(inMsg.payload, "TAC:L", 5) == 0) {
+                                char target[16] = {0};
+                                if (tacParseTarget(inMsg.payload, target, sizeof(target)) && target[0] != '*') {
+                                    destNode = target;
+                                }
                             }
                             if (!dtnIsNodeReachable(destNode)) {
                                 size_t storeSize = sizeof(LoRaPacket) - MAX_PAYLOAD_LEN + rxPkt->payloadLen;
@@ -1483,11 +1631,21 @@ static void dispatchMatrixKey(MatrixKey key) {
             } else {
                 // Standard tactical messages
                 MessageEvent txMsg;
-                if (menuCursor == menuCount - 3) txMsg.messageID = 0xFE; // KEY EXCH
-                else txMsg.messageID = (uint8_t)(menuCursor + 1);
+                if (menuCursor == menuCount - 3) {
+                    txMsg.messageID = 0xFE; // KEY EXCH
+                    strncpy(txMsg.payload, tacMessages[menuCursor], MAX_PAYLOAD_LEN - 1);
+                    txMsg.payload[MAX_PAYLOAD_LEN - 1] = '\0';
+                } else {
+                    txMsg.messageID = (uint8_t)(menuCursor + 1);
+                    if (tacTxMode == TAC_TX_INDIVIDUAL) {
+                        snprintf(txMsg.payload, MAX_PAYLOAD_LEN, "TAC:L%u:I:%s:%s",
+                                 menuCursor + 1, tacTargetNode, tacMessages[menuCursor]);
+                    } else {
+                        snprintf(txMsg.payload, MAX_PAYLOAD_LEN, "TAC:L%u:B:*:%s",
+                                 menuCursor + 1, tacMessages[menuCursor]);
+                    }
+                }
                 txMsg.hopCount = 3;
-                strncpy(txMsg.payload, tacMessages[menuCursor], MAX_PAYLOAD_LEN - 1);
-                txMsg.payload[MAX_PAYLOAD_LEN - 1] = '\0';
                 xQueueSend(txQueue, &txMsg, 0);
                 nextMenu = MENU_COMPOSE; menuChanged = true;
             }

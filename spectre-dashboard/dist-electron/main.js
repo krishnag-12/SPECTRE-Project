@@ -7,7 +7,8 @@ const { startMockStream } = require('./mock-serial');
 const { startSerialBridge } = require('./serial-bridge');
 const IS_DEV = !app.isPackaged;
 const envMock = process.env.SPECTRE_MOCK;
-const USE_MOCK = envMock ? envMock === 'true' : IS_DEV;
+// Default to LIVE mode (connecting to hardware). Set SPECTRE_MOCK=true to force mock mode.
+const USE_MOCK = envMock === 'true';
 let mainWindow = null;
 let httpServer = null;
 let stopBackend = null;

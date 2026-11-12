@@ -205,14 +205,26 @@ static void hexDump(const uint8_t* data, size_t len, char* out, size_t outSize) 
 // CRYPTO HELPERS
 // =============================================================================
 
+// Default pre-shared network session key for immediate out-of-the-box operation
+static const uint8_t DEFAULT_NET_KEY[32] = {
+    0x53, 0x50, 0x45, 0x43, 0x54, 0x52, 0x45, 0x5f, // S P E C T R E _
+    0x54, 0x41, 0x43, 0x54, 0x49, 0x43, 0x41, 0x4c, // T A C T I C A L
+    0x5f, 0x4d, 0x45, 0x53, 0x48, 0x5f, 0x4b, 0x45, // _ M E S H _ K E
+    0x59, 0x5f, 0x32, 0x30, 0x32, 0x36, 0x21, 0x23  // Y _ 2 0 2 6 ! #
+};
+
 void initCryptoAndGenerateKeys() {
     prefs.begin("spectre", false);
     if (prefs.isKey("net_key")) {
         size_t len = prefs.getBytes("net_key", primaryAESKey, 32);
         if (len == 32) {
             keyExchangeComplete = true;
+            return;
         }
     }
+    // Pre-shared default network session key for immediate out-of-the-box operation
+    memcpy(primaryAESKey, DEFAULT_NET_KEY, 32);
+    keyExchangeComplete = true;
 }
 
 static int aes256EncryptWithKey(const uint8_t* key, const char* plaintext, const uint8_t* iv, uint8_t* ciphertext, uint8_t* tag) {
@@ -294,8 +306,35 @@ static void emitMlJson(const AnomalyResult& ar) {
 }
 
 // =============================================================================
-// SERIAL BRIDGE LOGIC
+// SERIAL BRIDGE LOGIC & MESH DEDUPLICATION
 // =============================================================================
+
+struct SeenPacket {
+    uint8_t iv[12];
+    uint32_t timestamp;
+};
+#define SEEN_PACKET_CACHE_SIZE 32
+static SeenPacket seenPackets[SEEN_PACKET_CACHE_SIZE];
+static size_t seenPacketHead = 0;
+
+static bool hasSeenPacket(const uint8_t* iv) {
+    if (!iv) return false;
+    uint32_t now = millis();
+    for (size_t i = 0; i < SEEN_PACKET_CACHE_SIZE; i++) {
+        if ((now - seenPackets[i].timestamp < 15000) &&
+            memcmp(seenPackets[i].iv, iv, 12) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void markPacketSeen(const uint8_t* iv) {
+    if (!iv) return;
+    memcpy(seenPackets[seenPacketHead].iv, iv, 12);
+    seenPackets[seenPacketHead].timestamp = millis();
+    seenPacketHead = (seenPacketHead + 1) % SEEN_PACKET_CACHE_SIZE;
+}
 
 static bool isSupportedCommandType(const char* type) {
     return strcmp(type, "PING") == 0 || strcmp(type, "REKEY") == 0 || strcmp(type, "ZERO") == 0
@@ -374,8 +413,12 @@ static bool queueBridgeCommand(const char* type, const char* targetNodeId) {
 }
 
 static void handleBridgeSerialLine(char* line) {
-    if (strncmp(line, "CMD:", 4) != 0) {
-        return;
+    if (!line) return;
+    while (*line == ' ' || *line == '\t') line++;
+    if (*line == '\0') return;
+
+    if (strncmp(line, "CMD:", 4) == 0) {
+        line += 4;
     }
 
     // Make a copy since strtok_r modifies the buffer
@@ -384,15 +427,31 @@ static void handleBridgeSerialLine(char* line) {
     lineCopy[sizeof(lineCopy) - 1] = '\0';
 
     char* savePtr = nullptr;
-    char* token = strtok_r(lineCopy, ":", &savePtr);
-    char* type = strtok_r(nullptr, ":", &savePtr);
+    char* type = strtok_r(lineCopy, ":", &savePtr);
     char* targetNodeId = strtok_r(nullptr, ":", &savePtr);
     char* commandId = strtok_r(nullptr, ":", &savePtr);
 
-    if (!token || !type || !targetNodeId || !commandId) {
-        emitCommandAck(commandId ? commandId : "missing", targetNodeId ? targetNodeId : "unknown", type ? type : "UNKNOWN", false, "INVALID_FORMAT");
+    if (!type || !targetNodeId) {
+        emitCommandAck("missing", "unknown", type ? type : "UNKNOWN", false, "INVALID_FORMAT");
         return;
     }
+
+    auto trimField = [](char* s) {
+        if (!s) return;
+        size_t len = strlen(s);
+        while (len > 0 && (s[len - 1] == '\r' || s[len - 1] == '\n' || s[len - 1] == ' ' || s[len - 1] == '\t')) {
+            s[--len] = '\0';
+        }
+    };
+    trimField(type);
+    trimField(targetNodeId);
+    if (commandId) trimField(commandId);
+
+    char defaultCmdId[16] = "cmd-0";
+    if (!commandId || strlen(commandId) == 0) {
+        commandId = defaultCmdId;
+    }
+
     if (!isSupportedCommandType(type)) {
         emitCommandAck(commandId, targetNodeId, type, false, "UNSUPPORTED_COMMAND");
         return;
@@ -526,6 +585,23 @@ void taskGatewayRadio(void* pvParameters) {
                         char escapedPayload[MAX_PAYLOAD_LEN * 2];
                         jsonEscape(plaintext, escapedPayload, sizeof(escapedPayload));
                         const char* packetNodeId = rxPkt->nodeId[0] != '\0' ? rxPkt->nodeId : "Unknown-0";
+
+                        // Ignore relayed echoes of packets originating from the gateway itself
+                        if (strncmp(packetNodeId, NODE_ID, NODE_ID_MAX_LEN) == 0) {
+                            radio.standby();
+                            radio.startReceive();
+                            rxFlag = false;
+                            continue;
+                        }
+
+                        // Deduplicate retransmitted/relayed copies of the same packet
+                        if (hasSeenPacket(rxPkt->iv)) {
+                            radio.standby();
+                            radio.startReceive();
+                            rxFlag = false;
+                            continue;
+                        }
+                        markPacketSeen(rxPkt->iv);
 
                         // Sprint E: Calculate position
                         float rxRssi = (float)radio.getRSSI();
