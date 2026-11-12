@@ -62,14 +62,16 @@
 **[Visual: Mathematical Survivability Model equation, risk factors, and comparison of conventional options]**
 
 **Maneesh S M:**
-> "To address these failure modes systematically, we formulated a qualitative tactical risk model where force survivability $P_{survive}$ is expressed as the product of three independent operational probabilities:
+> "To address these failure modes systematically, we formulated a qualitative tactical risk model where force survivability is expressed as the product of three independent operational probabilities:
 >
-> $$P_{survive} \propto A_{C2} \times (1 - P_{detect}) \times (1 - P_{exploit})$$
+> **Tactical Survivability Model:**
+> $$P_{\text{survive}} \propto A_{\text{C2}} \cdot (1 - P_{\text{detect}}) \cdot (1 - P_{\text{exploit}})$$
+> *(Spoken: "Force survivability is proportional to Command-and-Control link availability, multiplied by one minus the probability of detection, multiplied by one minus the probability of enemy exploitation.")*
 >
 > Where:
-> - **$A_{C2}$** is tactical link availability under jamming and physical terrain masking. We maximize this through LoRa Chirp Spread Spectrum processing gain, multi-hop mesh flooding, and Delay-Tolerant Networking (DTN).
-> - **$P_{detect}$** is the probability of adversary electromagnetic intercept. We drive this down by compressing our encrypted messages into sub-100-millisecond bursts (SF7 / 250 kHz bandwidth) paired with pseudo-random frequency hopping.
-> - **$P_{exploit}$** is the probability that captured hardware yields cryptographic keys or plaintext intelligence. We drive this to zero through zero-trust authenticated encryption on every frame and remote one-touch hardware zeroization.
+> - **$A_{\text{C2}}$** is tactical link availability under jamming and physical terrain masking. We maximize this through LoRa Chirp Spread Spectrum processing gain, multi-hop mesh flooding, and Delay-Tolerant Networking (DTN).
+> - **$P_{\text{detect}}$** is the probability of adversary electromagnetic intercept. We drive this down by compressing our encrypted messages into sub-100-millisecond bursts (SF7 / 250 kHz bandwidth) paired with pseudo-random frequency hopping.
+> - **$P_{\text{exploit}}$** is the probability that captured hardware yields cryptographic keys or plaintext intelligence. We drive this to zero through zero-trust authenticated encryption on every frame and remote one-touch hardware zeroization.
 >
 > Conventional options fail: military radios like the Harris Falcon III cost upwards of \$15,000 USD and remain export-controlled; cellular MANETs die without infrastructure; and civilian mesh platforms like Meshtastic lack authenticated dynamic keying, electronic warfare detection, and hardware anti-tamper security."
 
@@ -134,17 +136,25 @@
 >
 > To survive against near-peer Signal Intelligence (SIGINT), S.P.E.C.T.R.E. rejects legacy narrowband voice radios in favor of **Chirp Spread Spectrum (CSS)** modulation operating at 433 MHz.
 >
-> According to the **Shannon-Hartley Theorem**:
+> **Shannon-Hartley Channel Capacity Formulation:**
 > $$C = B \cdot \log_2\left(1 + \frac{S}{N}\right)$$
+> *(Spoken: "By the Shannon-Hartley theorem, channel capacity C equals bandwidth B times log base 2 of one plus the signal-to-noise ratio.")*
+>
 > By spreading our signal across a wide 250 kHz bandwidth with Spreading Factor SF7, our system achieves a processing gain of **16.6 dB**:
-> $$PG = 10 \cdot \log_{10}\left(\frac{250,000}{5,468}\right) \approx 16.6\text{ dB}$$
+>
+> **Chirp Processing Gain:**
+> $$PG = 10 \cdot \log_{10}\left(\frac{BW}{R_b}\right) = 10 \cdot \log_{10}\left(\frac{250,000}{5,468}\right) \approx 16.6\text{ dB}$$
+> *(Spoken: "Spreading our transmission across a 250 kHz bandwidth with spreading factor 7 yields a 16.6 dB processing gain, allowing us to decode signals 7.5 dB below the thermal noise floor.")*
+>
 > This allows the SX1278 transceiver to decode tactical packets arriving up to **7.5 dB below the thermal noise floor**, forcing adversary jammers to broadcast immense power density across 250 kHz to disrupt our link.
 >
-> **Low Probability of Detection (LPD) Timing:**
+> **Low Probability of Detection (LPD) Time-on-Air (ToA):**
 > Adversary Radio Direction Finding (RDF) phase-interferometers require a minimum dwell time of 150 to 500 milliseconds to triangulate a radio's Angle of Arrival (AoA). Using Semtech's physical-layer formulation, our symbol duration at SF7 is exactly **0.512 ms**:
-> - Preamble duration (12.25 symbols): **6.272 ms**
-> - Payload duration (160 symbols for our encrypted packet): **81.920 ms**
-> - **Total Time-on-Air (ToA):** $6.272 + 81.920 = \mathbf{88.192\text{ ms}}$
+>
+> $$T_{\text{preamble}} = (8 + 4.25) \times 0.512\text{ ms} = 6.272\text{ ms}$$
+> $$T_{\text{payload}} = 160 \times 0.512\text{ ms} = 81.920\text{ ms}$$
+> $$T_{\text{Total ToA}} = T_{\text{preamble}} + T_{\text{payload}} = 6.272\text{ ms} + 81.920\text{ ms} = \mathbf{88.192\text{ ms}}$$
+> *(Spoken: "The total Time-on-Air for our 80-byte encrypted packet is exactly 88.192 milliseconds — comfortably below the 100 millisecond threshold needed to evade adversary direction-finding interceptors.")*
 >
 > Because our burst finishes in under 100 milliseconds, adversary sweeping spectrum analyzers complete their sweep without detecting the carrier, driving the probability of intercept down by over 94%. With +17 dBm transmit power, our Maximum Allowable Path Loss is **138.5 dB (up to 142.5 dB with boosted PA)**, yielding over 2.2 km range in dense concrete urban clutter and over 8 km in open terrain."
 
@@ -180,8 +190,11 @@
 > - AES-256-GCM Ciphertext (Variable up to 127 Bytes)
 >
 > **Galois/Counter Mode (GCM) Integrity:**
-> For every single packet, the hardware True Random Number Generator generates a fresh 96-bit IV. Encryption occurs in counter mode, while a 128-bit authentication tag $T_{auth}$ is calculated using polynomial evaluation over the binary Galois field $GF(2^{128})$:
-> $$T_{auth} = \text{GHASH}_H(A \parallel C \parallel \ell(A) \parallel \ell(C)) \oplus \text{AES}_K(\text{CB}_0)$$
+> For every single packet, the hardware True Random Number Generator generates a fresh 96-bit IV. Encryption occurs in counter mode, while a 128-bit authentication tag is calculated using polynomial evaluation over the binary Galois field $GF(2^{128})$:
+>
+> **Galois Authentication Tag Formulation:**
+> $$T_{\text{auth}} = \text{GHASH}_H(A \parallel C \parallel \ell(A) \parallel \ell(C)) \oplus \text{AES}_K(\text{CB}_0)$$
+> *(Spoken: "For every packet, a 128-bit authentication tag is computed via Galois polynomial evaluation over GF(2^128). If an adversary alters even a single bit in the ciphertext, authentication fails instantly and the frame is rejected.")*
 >
 > In legacy stream ciphers (like AES-CTR), an adversary can intercept a packet and flip coordinate bits (directing friendly fire) because XOR is linear. In S.P.E.C.T.R.E., flipping even a single bit in the ciphertext causes the Galois field tag verification to fail with probability $1 - 2^{-128}$. The packet is instantly dropped at the edge with zero plaintext leakage."
 
@@ -198,10 +211,16 @@
 >
 > We engineered an **Asynchronous Channel Activity Detection (CAD) Sweep State Machine**:
 > 1. **Receiver CAD Sweep:** When idle, the receiver rapidly sweeps all 15 channels. On each channel, it performs a 1.174 ms CAD energy sample on DIO1. The full 15-channel sweep completes in:
->    $$T_{sweep} = 15 \times 1.174\text{ ms} = \mathbf{17.610\text{ ms}}$$
+>    $$T_{\text{sweep}} = 15 \times 1.174\text{ ms} = \mathbf{17.610\text{ ms}}$$
 > 2. **Transmitter Preamble Strobe:** When a node initiates transmission, it prepends an extended 37-symbol preamble strobe:
->    $$T_{strobe} = 37 \times 0.512\text{ ms} = \mathbf{18.944\text{ ms}}$$
-> 3. **Mathematical Proof of Rendezvous:** Because $T_{strobe} > T_{sweep}$ ($18.944\text{ ms} > 17.610\text{ ms}$), the transmitter's strobe is **mathematically guaranteed to intersect** the scanning receiver's CAD detection window regardless of clock drift or phase offset! Upon detection, the receiver locks onto the carrier and ingests the authenticated payload."
+>    $$T_{\text{strobe}} = 37 \times 0.512\text{ ms} = \mathbf{18.944\text{ ms}}$$
+> 3. **Mathematical Proof of Rendezvous:**
+>
+> **CAD-FHSS Rendezvous Timing Condition:**
+> $$T_{\text{strobe}} > T_{\text{sweep}} \quad (18.944\text{ ms} > 17.610\text{ ms}) \implies \text{Mathematical Guarantee of Intersection}$$
+> *(Spoken: "Because our 37-symbol transmitter strobe of 18.94 ms strictly exceeds the receiver's full 15-channel sweep time of 17.61 ms, the signal is mathematically guaranteed to intersect the receiver's CAD detection window on that channel without requiring GPS clocks!")*
+>
+> Upon detection, the receiver locks onto the carrier and ingests the authenticated payload."
 
 ---
 
@@ -262,7 +281,11 @@
 >    - Built with Three.js, it projects a full 3D tactical volume with polar grids, elevation planes, tactical sector cones, and node beacons with vertical drop lines tethering them to the terrain plane — providing complete spatial awareness for multi-elevation or drone formations with 360-degree orbital camera controls.
 > 3. **GPS-Denied Passive RF Distance & Sector Tracking:**
 >    - In A2/AD theaters where GPS is jammed, the gateway calculates distances using the empirical Log-Distance Path Loss model ($RSSI_0 = -42\text{ dBm}, n = 2.4$):
->      $$d = 10^{\frac{-42.0 - \text{RSSI}}{24.0}}$$
+>
+>    **Log-Distance Passive Path-Loss Model:**
+>    $$d = 10^{\frac{\text{RSSI}_0 - \text{RSSI}}{10 \cdot n}} = 10^{\frac{-42.0 - \text{RSSI}}{24.0}}$$
+>    *(Spoken: "Using our calibrated log-distance path loss equation with reference RSSI minus 42 dBm and path loss exponent 2.4, the gateway calculates radial distance directly from signal strength without GPS.")*
+>
 >    - Distances are mapped onto standard fireteam operational sector radials (e.g., `Alpha-1` on $045^\circ$ Northeast, `Bravo-2` on $225^\circ$ Southwest), giving commanders instantaneous Blue Force Tracking without transmitting trackable downlink pings!
 > 4. **Live Cryptographic Pipeline Inspector & 1-Bit Tamper Sandbox:**
 >    - A dedicated diagnostic console rendering all 5 sequential cryptographic stages of the incoming frame. Evaluators can click **'FLIP 1 BIT IN CIPHERTEXT'**; the dashboard immediately re-evaluates the Galois polynomial, displays a red cryptographic rejection banner, and confirms 100% Man-in-the-Middle mitigation."
@@ -323,8 +346,11 @@
 > We chose the Isolation Forest algorithm because it operates on an unsupervised isolation principle: anomalies isolate near the root of randomized decision trees with significantly shorter path lengths $h(x)$. 
 > We compiled 100 trained decision trees directly into static C++ arrays in `anomaly_engine.h`. The search traverses branch comparisons without expensive matrix multiplications, completing single-sample inference in merely **3.14 ms** on the 240 MHz Xtensa core!
 >
-> The raw score is smoothed using an Exponentially Weighted Moving Average (EWMA) filter ($\alpha = 0.30$):
-> $$S_t = 0.30 \cdot s_{raw} + 0.70 \cdot S_{t-1}$$
+> **Isolation Forest Mathematical Anomaly Scoring & EWMA Filter:**
+> $$s(x) = 2^{-\frac{E(h(x))}{c(\psi)}}, \quad \text{where } c(256) \approx 10.245$$
+> $$S_t = 0.30 \cdot s_{\text{raw}} + 0.70 \cdot S_{t-1}$$
+> *(Spoken: "The anomaly score is calculated from the average tree path length normalized against an unsuccessful binary search tree, smoothed by an exponentially weighted moving average with alpha equal to 0.30.")*
+>
 > Scores map to clear tactical threat tiers:
 > - $< 0.60$: **NOMINAL (Clear Spectrum)**
 > - $0.60 - 0.75$: **ELEVATED (Suspicious RF Activity)**
@@ -340,7 +366,12 @@
 > "Closely integrated with our edge intelligence is our **Inertial Biomechanical Casualty Detection Engine**. In infantry combat, incapacitated operators cannot press an SOS button. However, simple accelerometer threshold detectors fail catastrophically — firing a rifle generates 8g to 16g recoil spikes, and diving into cover produces 3g to 6g impacts.
 >
 > S.P.E.C.T.R.E. interfaces an InvenSense MPU-6050 6-DoF IMU sampled at 50 Hz on Core 1 to enforce a biologically invariant three-phase physiological state machine:
-> 1. **Phase 1 (Kinetic Shock Detection):** Ballistic projectile strike triggers $|a| = \sqrt{a_x^2 + a_y^2 + a_z^2} > 12g$ with a sharp jerk transient ($\frac{da}{dt} < 5\text{ ms}$). This opens a 1.5-second posture window.
+>
+> **Three-Phase Combat Incapacitation Signature:**
+> $$\text{Phase 1: } |a| = \sqrt{a_x^2 + a_y^2 + a_z^2} > 12g \quad\longrightarrow\quad \text{Phase 2: } \Delta\theta > 70^\circ \quad\longrightarrow\quad \text{Phase 3: } \text{Var}(a) < 0.02g^2$$
+> *(Spoken: "The state machine confirms incapacitation only when a high-g kinetic shock over 12g is followed within 1.5 seconds by posture collapse over 70 degrees, followed by post-impact flaccid atonia where acceleration variance drops below 0.02g squared for 10 consecutive seconds.")*
+>
+> 1. **Phase 1 (Kinetic Shock Detection):** Ballistic projectile strike triggers $|a| > 12g$ with a sharp jerk transient ($\frac{da}{dt} < 5\text{ ms}$). This opens a 1.5-second posture window.
 > 2. **Phase 2 (Posture Collapse Verification):** Core 1 integrates tri-axial angular gyroscope velocity. If net pitch/roll angular shift $\Delta\theta > 70^\circ$ within 1.5 seconds, posture collapse is confirmed.
 > 3. **Phase 3 (Post-Impact Flaccid Atonia Variance Filter):** A 10-second sliding buffer calculates acceleration variance. If the soldier is conscious, taking cover, or crawling, muscle tremors keep variance $\text{Var}(a) > 0.05g^2$, aborting the alarm. But if voluntary motor control ceases due to concussive trauma ($\text{Var}(a) < 0.02g^2$ for 10 consecutive seconds), casualty is confirmed!
 > 4. **Grace Window:** A 5-second acoustic buzzer and countdown alert activate; if uncancelled by the soldier, Core 0 automatically broadcasts an encrypted `PRIORITY_CASUALTY` distress beacon across the mesh with maximum +18 dBm power. In 200 combat motion trials, it achieved a **98.0% True Positive Rate with 0.0% False Alarms**!"
