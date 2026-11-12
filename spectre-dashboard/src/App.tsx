@@ -143,12 +143,12 @@ function telemetryReducer(state: AppState, action: Action): AppState {
         }
 
         const isRoutineHeartbeat = packet.payload.startsWith('HB:');
-        const isNewPayload = !prev || prev.payload !== packet.payload || prev.msgId !== packet.msgId;
+        const isPong = packet.payload.startsWith('PONG:');
+        const isNewPayload = isPong || !prev || prev.payload !== packet.payload || prev.msgId !== packet.msgId;
 
         if (!isRoutineHeartbeat && isNewPayload && packet.payload.trim().length > 0) {
           const isTac = packet.payload.startsWith('TAC:');
           const isSys = packet.payload.startsWith('SYS:');
-          const isPong = packet.payload.startsWith('PONG:');
           const isEw = packet.payload.startsWith('EW TEST:');
           newEvents.unshift({
             id: `payload-${packet.nodeId}-${packet.msgId}-${Date.now()}-${Math.random()}`,
@@ -419,10 +419,46 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
-  // ---- Web Serial Bridge (browser-only) ----
+  // ---- Serial Connect / Disconnect (supports Electron native serial & browser WebSerial) ----
   const handleSerialConnect = useCallback(async () => {
+    // 1. If running inside Electron desktop app
+    if (window.spectre?.serial) {
+      try {
+        setSerialState('connecting');
+        const ports = await window.spectre.serial.listPorts();
+        const candidate = ports.find((p: any) =>
+          p.path.includes('ttyACM') || p.path.includes('ttyUSB') || p.path.includes('COM') ||
+          p.manufacturer?.toLowerCase().includes('espressif') ||
+          p.manufacturer?.toLowerCase().includes('silicon labs') ||
+          p.manufacturer?.toLowerCase().includes('ch340') ||
+          p.manufacturer?.toLowerCase().includes('ftdi')
+        ) || ports[0];
+
+        if (!candidate) {
+          alert('No serial ports found! Please plug in the C2 Gateway via USB.');
+          setSerialState('disconnected');
+          return;
+        }
+
+        const res = await window.spectre.serial.connect(candidate.path);
+        if (res.ok) {
+          setSerialState('connected');
+          setSerialPortName(candidate.path);
+          dispatch({ type: 'SERIAL_CONNECTED', payload: { portPath: candidate.path } });
+        } else {
+          alert(`Failed to connect to ${candidate.path}: ${res.error}`);
+          setSerialState('error');
+        }
+      } catch (err) {
+        console.error('[SPECTRE] Electron serial connect error:', err);
+        setSerialState('error');
+      }
+      return;
+    }
+
+    // 2. Browser mode (Web Serial)
     if (!WebSerialBridge.isSupported()) {
-      alert('Web Serial API is not supported in this browser.\nUse Google Chrome or Microsoft Edge.');
+      alert('Web Serial API is not supported in this browser.\nUse Google Chrome, Chromium, Brave, or Microsoft Edge.');
       return;
     }
 
@@ -466,6 +502,13 @@ export default function App() {
   }, []);
 
   const handleSerialDisconnect = useCallback(async () => {
+    if (window.spectre?.serial) {
+      await window.spectre.serial.disconnect();
+      setSerialState('disconnected');
+      setSerialPortName(null);
+      dispatch({ type: 'SERIAL_DISCONNECTED' });
+      return;
+    }
     if (serialBridgeRef.current) {
       await serialBridgeRef.current.disconnect();
       serialBridgeRef.current = null;
